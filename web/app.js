@@ -12,6 +12,8 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('chat-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
   });
+  routeFromHash();
+  window.addEventListener('hashchange', routeFromHash);
 });
 
 async function loadAll() {
@@ -445,18 +447,27 @@ async function testConnection() {
   }
 }
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
+// ── Tabs / routing ────────────────────────────────────────────────────────────
+
+const TAB_NAMES = ['runs', 'chat', 'settings'];
 
 function switchTab(name, btn) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(`tab-${name}`).classList.add('active');
+  history.replaceState(null, '', `#${name}`);
 }
 
 function switchTabByName(name) {
   const btn = document.querySelector(`.tab[onclick*="'${name}'"]`);
   if (btn) switchTab(name, btn);
+}
+
+function routeFromHash() {
+  const hash = location.hash.replace('#', '') || 'runs';
+  const name = TAB_NAMES.includes(hash) ? hash : 'runs';
+  switchTabByName(name);
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
