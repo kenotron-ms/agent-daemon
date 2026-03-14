@@ -351,8 +351,8 @@ async function sendChat() {
       actDiv.className = 'actions';
       actDiv.textContent = '✓ ' + res.actions.join('\n✓ ');
       bubble.appendChild(actDiv);
-      await loadJobs();
     }
+    await loadJobs();
   } catch (err) {
     thinking.remove();
     if (err.message === 'no_api_key') {

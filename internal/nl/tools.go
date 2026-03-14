@@ -269,9 +269,12 @@ func executeUpdateJob(ctx context.Context, s store.Store, input json.RawMessage)
 		job.Trigger.Type = types.TriggerType(p.TriggerType)
 		job.Trigger.Schedule = p.TriggerSchedule
 	}
-	if p.Executor != "" {
-		applyExecutorConfig(job, &p)
+	// Apply executor config: if the AI didn't pass executor explicitly, fall back
+	// to the job's existing executor so fields like shell_command still apply.
+	if p.Executor == "" {
+		p.Executor = string(job.Executor)
 	}
+	applyExecutorConfig(job, &p)
 	applyWatchConfig(job, &p)
 	job.UpdatedAt = time.Now()
 
