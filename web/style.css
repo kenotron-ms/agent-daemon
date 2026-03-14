@@ -180,6 +180,17 @@ header h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; color: var
   border-radius: 12px; font-size: 13px; line-height: 1.5;
   white-space: pre-wrap;
 }
+.chat-bubble.assistant { white-space: normal; }
+.chat-bubble.assistant p { margin: 0 0 8px; }
+.chat-bubble.assistant p:last-child { margin-bottom: 0; }
+.chat-bubble.assistant ul, .chat-bubble.assistant ol { margin: 0 0 8px; padding-left: 20px; }
+.chat-bubble.assistant li { margin-bottom: 2px; }
+.chat-bubble.assistant code { background: var(--bg2); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+.chat-bubble.assistant pre { background: var(--bg2); padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px; }
+.chat-bubble.assistant pre code { background: none; padding: 0; }
+.chat-bubble.assistant h1, .chat-bubble.assistant h2, .chat-bubble.assistant h3 { margin: 8px 0 4px; font-size: 13px; font-weight: 600; }
+.chat-bubble.assistant strong { font-weight: 600; }
+.chat-bubble.assistant a { color: var(--accent); }
 .chat-bubble.user {
   background: var(--accent); color: white; align-self: flex-end;
   border-bottom-right-radius: 4px;

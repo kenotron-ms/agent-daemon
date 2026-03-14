@@ -367,7 +367,11 @@ function appendChatBubble(role, text) {
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = `chat-bubble ${role}`;
-  div.textContent = text;
+  if (role === 'assistant' && typeof marked !== 'undefined') {
+    div.innerHTML = marked.parse(text);
+  } else {
+    div.textContent = text;
+  }
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
   return div;
