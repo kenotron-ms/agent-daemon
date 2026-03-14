@@ -4,9 +4,13 @@ package tray
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -25,7 +29,57 @@ func Run(port int) error {
 	return nil
 }
 
+// firstRunSetup auto-installs the daemon when the app is launched from a
+// .app bundle for the first time. It installs the LaunchAgent (pointing to
+// the binary inside the bundle) and starts the daemon, then symlinks the
+// binary to /usr/local/bin so it's accessible from the terminal.
+func firstRunSetup() {
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	// Only auto-install when launched from within a .app bundle.
+	if !strings.Contains(exePath, ".app/Contents/MacOS/") {
+		return
+	}
+
+	// Check if already installed (LaunchAgent plist exists).
+	home, _ := os.UserHomeDir()
+	plistPath := filepath.Join(home, "Library", "LaunchAgents", "agent-daemon.plist")
+	if _, err := os.Stat(plistPath); err == nil {
+		return // already installed, nothing to do
+	}
+
+	slog.Info("first-run: installing daemon service")
+
+	svc, _, err := internalsvc.NewService(internalsvc.LevelUser)
+	if err != nil {
+		slog.Error("first-run: failed to create service", "err", err)
+		return
+	}
+	if err := service.Control(svc, "install"); err != nil {
+		slog.Error("first-run: failed to install service", "err", err)
+		return
+	}
+	if err := service.Control(svc, "start"); err != nil {
+		slog.Error("first-run: failed to start service", "err", err)
+	}
+
+	// Best-effort: symlink to /usr/local/bin so `agent-daemon` works in terminal.
+	target := "/usr/local/bin/agent-daemon"
+	if _, err := os.Lstat(target); os.IsNotExist(err) {
+		_ = os.MkdirAll("/usr/local/bin", 0755)
+		if err := os.Symlink(exePath, target); err == nil {
+			slog.Info("first-run: symlinked to /usr/local/bin/agent-daemon")
+		}
+	}
+
+	slog.Info("first-run: daemon installed and started")
+}
+
 func onReady(port int) {
+	firstRunSetup()
 	icon := makeIcon()
 	systray.SetTemplateIcon(icon, icon)
 	systray.SetTooltip("agent-daemon")
