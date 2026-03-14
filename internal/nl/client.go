@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -17,7 +18,43 @@ type NLClient interface {
 	Ping(ctx context.Context) error
 }
 
-const systemPrompt = `You are the agent-daemon assistant. You help users manage their scheduled jobs.
+// buildSystemPrompt returns the system prompt with OS-specific context injected.
+func buildSystemPrompt() string {
+	os := runtime.GOOS
+	arch := runtime.GOARCH
+
+	var osName, shellInvoke, pathSep, pathExample, osNotes string
+	switch os {
+	case "darwin":
+		osName = "macOS"
+		shellInvoke = "sh -c \"<command>\""
+		pathSep = "/"
+		pathExample = "/Users/alice/projects/myapp"
+		osNotes = "Use macOS/Unix conventions: forward slashes, $HOME, ~/.config, launchctl for services, brew for packages."
+	case "windows":
+		osName = "Windows"
+		shellInvoke = "cmd /C \"<command>\" (or PowerShell: powershell -Command \"<command>\")"
+		pathSep = "\\"
+		pathExample = `C:\Users\alice\projects\myapp`
+		osNotes = `Use Windows conventions: backslashes in paths, %USERPROFILE%, sc.exe for services, winget/choco for packages. Prefer PowerShell for modern scripting.`
+	default:
+		osName = "Linux"
+		shellInvoke = "sh -c \"<command>\""
+		pathSep = "/"
+		pathExample = "/home/alice/projects/myapp"
+		osNotes = "Use Linux/Unix conventions: forward slashes, $HOME, ~/.config, systemctl for services, apt/yum/pacman for packages."
+	}
+
+	return `You are the agent-daemon assistant. You help users manage their scheduled jobs.
+
+## Runtime environment
+- OS: ` + osName + ` (` + os + `/` + arch + `)
+- Shell executor invokes: ` + shellInvoke + `
+- Path separator: ` + pathSep + `
+- Example path: ` + pathExample + `
+- ` + osNotes + `
+
+Always write shell_command values that are correct for this OS. Use appropriate path separators and shell syntax.
 
 Current jobs will be provided in each message. You can:
 - Create new jobs (create_job)
@@ -33,7 +70,7 @@ Current jobs will be provided in each message. You can:
 ## Executor types
 Every job has an executor that controls how it runs:
 
-- "shell": runs a shell command. Requires shell_command.
+- "shell": runs a shell command via ` + shellInvoke + `. Requires shell_command.
 - "claude-code": runs the Claude Code CLI (` + "`" + `claude -p` + "`" + `) in a working directory. Requires claude_prompt. Optionally: claude_steps (array of follow-up prompts for multi-turn), claude_model (e.g. "sonnet", "opus", "claude-sonnet-4-6"), claude_max_turns, claude_allowed_tools (array of tool names).
 - "amplifier": runs the Amplifier CLI. Use amplifier_prompt for free-form prompts, or amplifier_recipe_path for a YAML recipe file. Optionally: amplifier_steps (multi-turn follow-ups), amplifier_bundle (e.g. "foundation", "recipes"), amplifier_model, amplifier_context (key-value map for recipe variables).
 
@@ -48,6 +85,7 @@ Every job has an executor that controls how it runs:
 No executor mentioned → default "shell".
 
 Be concise. Confirm what actions you took.`
+}
 
 // AnthropicClient wraps the Anthropic SDK for job management conversations.
 type AnthropicClient struct {
@@ -70,7 +108,7 @@ func (c *AnthropicClient) Chat(ctx context.Context, userMessage string) (string,
 	jobs, _ := c.store.ListJobs(ctx)
 	jobsJSON, _ := json.MarshalIndent(jobs, "", "  ")
 
-	systemWithJobs := systemPrompt + "\n\nCurrent jobs:\n```json\n" + string(jobsJSON) + "\n```"
+	systemWithJobs := buildSystemPrompt() + "\n\nCurrent jobs:\n```json\n" + string(jobsJSON) + "\n```"
 
 	tools := buildTools()
 

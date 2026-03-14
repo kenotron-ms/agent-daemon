@@ -92,7 +92,7 @@ func (c *OpenAIClient) Chat(ctx context.Context, userMessage string) (string, []
 	jobs, _ := c.store.ListJobs(ctx)
 	jobsJSON, _ := json.MarshalIndent(jobs, "", "  ")
 
-	sysContent := systemPrompt + "\n\nCurrent jobs:\n```json\n" + string(jobsJSON) + "\n```"
+	sysContent := buildSystemPrompt() + "\n\nCurrent jobs:\n```json\n" + string(jobsJSON) + "\n```"
 
 	messages := []oaiMessage{
 		{Role: "system", Content: sysContent},
