@@ -15,8 +15,13 @@ type chatResponse struct {
 }
 
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
-	if s.nlClient == nil {
-		writeError(w, http.StatusServiceUnavailable, "NL interface unavailable: set ANTHROPIC_API_KEY or configure it in the daemon config")
+	client := s.getNLClient()
+	if client == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error":            "no_api_key",
+			"message":          "AI assistant not configured. Add your API key in Settings.",
+			"settingsRequired": true,
+		})
 		return
 	}
 
@@ -30,7 +35,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	text, actions, err := s.nlClient.Chat(r.Context(), req.Message)
+	text, actions, err := client.Chat(r.Context(), req.Message)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

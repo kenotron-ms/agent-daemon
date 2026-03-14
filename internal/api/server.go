@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/ms/agent-daemon/internal/config"
@@ -20,7 +21,8 @@ type Server struct {
 	scheduler *scheduler.Scheduler
 	queue     *queue.BoundedQueue
 	startedAt time.Time
-	nlClient  *nl.Client
+	nlClient  nl.NLClient
+	nlMu      sync.RWMutex
 	httpSrv   *http.Server
 }
 
@@ -32,10 +34,21 @@ func NewServer(cfg *config.Config, s store.Store, sched *scheduler.Scheduler, q 
 		queue:     q,
 		startedAt: startedAt,
 	}
-	if cfg.AnthropicKey != "" {
-		srv.nlClient = nl.NewClient(cfg.AnthropicKey, s)
-	}
+	srv.nlClient = nl.NewClientFromConfig(cfg, s)
 	return srv
+}
+
+func (s *Server) reinitNLClient() {
+	client := nl.NewClientFromConfig(s.cfg, s.store)
+	s.nlMu.Lock()
+	s.nlClient = client
+	s.nlMu.Unlock()
+}
+
+func (s *Server) getNLClient() nl.NLClient {
+	s.nlMu.RLock()
+	defer s.nlMu.RUnlock()
+	return s.nlClient
 }
 
 func (s *Server) Start(addr string) error {
@@ -82,6 +95,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/daemon/pause", s.pauseDaemon)
 	mux.HandleFunc("POST /api/daemon/resume", s.resumeDaemon)
 	mux.HandleFunc("POST /api/daemon/flush", s.flushQueue)
+
+	// Settings
+	mux.HandleFunc("GET /api/settings", s.getSettings)
+	mux.HandleFunc("PUT /api/settings", s.updateSettings)
 
 	// Natural language chat
 	mux.HandleFunc("POST /api/chat", s.chat)

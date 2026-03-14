@@ -18,6 +18,9 @@ type Config struct {
 	QueueSize   int    `json:"queueSize"`
 	Paused      bool   `json:"paused"`
 	AnthropicKey string `json:"anthropicKey,omitempty"`
+	OpenAIKey   string `json:"openAIKey,omitempty"`
+	OpenAIModel string `json:"openAIModel,omitempty"` // e.g. "gpt-4o"
+	AIProvider  string `json:"aiProvider,omitempty"`  // "anthropic" | "openai"
 	LogLevel    string `json:"logLevel"`
 }
 

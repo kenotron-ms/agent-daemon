@@ -275,3 +275,34 @@ header h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; color: var
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+
+/* ── Settings ─────────────────────────────────────────────────────────────── */
+.settings-panel {
+  padding: 16px;
+}
+.settings-panel h3 {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.settings-status {
+  margin-bottom: 12px;
+}
+
+/* ── Onboarding notice ────────────────────────────────────────────────────── */
+.onboarding-notice {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg2));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 12px 12px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.onboarding-notice a {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

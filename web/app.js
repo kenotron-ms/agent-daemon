@@ -6,6 +6,7 @@ let daemonState = null;
 window.addEventListener('DOMContentLoaded', () => {
   loadAll();
   setInterval(loadAll, 3000);
+  loadSettings();
   onTriggerTypeChange();
   onExecutorChange();
   document.getElementById('chat-input').addEventListener('keydown', e => {
@@ -352,7 +353,11 @@ async function sendChat() {
     }
   } catch (err) {
     thinking.remove();
-    appendChatBubble('assistant', `Error: ${err.message}`);
+    if (err.message === 'no_api_key') {
+      appendChatBubble('assistant', 'No API key configured. Go to the Settings tab to add your Anthropic or OpenAI key.');
+    } else {
+      appendChatBubble('assistant', `Error: ${err.message}`);
+    }
   }
 }
 
@@ -366,6 +371,55 @@ function appendChatBubble(role, text) {
   return div;
 }
 
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  try {
+    const s = await api('GET', '/api/settings');
+    document.getElementById('s-provider').value = s.aiProvider || 'anthropic';
+    onProviderChange();
+    // Don't pre-fill key fields — just show placeholder if set
+    if (s.anthropicKeySet) document.getElementById('s-anthropic-key').placeholder = '(key saved — enter new to replace)';
+    if (s.openAIKeySet) document.getElementById('s-openai-key').placeholder = '(key saved — enter new to replace)';
+    if (s.openAIModel) document.getElementById('s-openai-model').value = s.openAIModel;
+    updateChatOnboarding(s);
+  } catch {}
+}
+
+function onProviderChange() {
+  const p = document.getElementById('s-provider').value;
+  document.getElementById('s-anthropic-fields').classList.toggle('hidden', p !== 'anthropic');
+  document.getElementById('s-openai-fields').classList.toggle('hidden', p !== 'openai');
+}
+
+async function saveSettings() {
+  const body = {
+    aiProvider: document.getElementById('s-provider').value,
+    anthropicKey: document.getElementById('s-anthropic-key').value.trim(),
+    openAIKey: document.getElementById('s-openai-key').value.trim(),
+    openAIModel: document.getElementById('s-openai-model').value.trim(),
+  };
+  try {
+    const s = await api('PUT', '/api/settings', body);
+    document.getElementById('s-anthropic-key').value = '';
+    document.getElementById('s-openai-key').value = '';
+    if (s.anthropicKeySet) document.getElementById('s-anthropic-key').placeholder = '(key saved — enter new to replace)';
+    if (s.openAIKeySet) document.getElementById('s-openai-key').placeholder = '(key saved — enter new to replace)';
+    const saved = document.getElementById('settings-saved');
+    saved.style.display = 'block';
+    setTimeout(() => { saved.style.display = 'none'; }, 3000);
+    updateChatOnboarding(s);
+  } catch (err) {
+    alert('Error saving settings: ' + err.message);
+  }
+}
+
+function updateChatOnboarding(settings) {
+  const banner = document.getElementById('chat-onboarding');
+  if (!banner) return;
+  banner.classList.toggle('hidden', !!settings.aiConfigured);
+}
+
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
 function switchTab(name, btn) {
@@ -373,6 +427,11 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(`tab-${name}`).classList.add('active');
+}
+
+function switchTabByName(name) {
+  const btn = document.querySelector(`.tab[onclick*="'${name}'"]`);
+  if (btn) switchTab(name, btn);
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────

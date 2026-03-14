@@ -40,9 +40,18 @@ func NewDaemon() (*Daemon, error) {
 		cfg = config.Defaults()
 	}
 
-	// Override anthropic key from env if set
+	// Override keys from env if set
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 		cfg.AnthropicKey = key
+		if cfg.AIProvider == "" {
+			cfg.AIProvider = "anthropic"
+		}
+	}
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		cfg.OpenAIKey = key
+		if cfg.AIProvider == "" {
+			cfg.AIProvider = "openai"
+		}
 	}
 
 	return &Daemon{cfg: cfg, store: s}, nil

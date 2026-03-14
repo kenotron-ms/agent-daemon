@@ -11,6 +11,11 @@ import (
 	"github.com/ms/agent-daemon/internal/store"
 )
 
+// NLClient is the interface for natural language chat clients.
+type NLClient interface {
+	Chat(ctx context.Context, message string) (string, []string, error)
+}
+
 const systemPrompt = `You are the agent-daemon assistant. You help users manage their scheduled jobs.
 
 Current jobs will be provided in each message. You can:
@@ -43,19 +48,19 @@ No executor mentioned → default "shell".
 
 Be concise. Confirm what actions you took.`
 
-// Client wraps the Anthropic SDK for job management conversations.
-type Client struct {
+// AnthropicClient wraps the Anthropic SDK for job management conversations.
+type AnthropicClient struct {
 	client anthropic.Client
 	store  store.Store
 }
 
-func NewClient(apiKey string, s store.Store) *Client {
+func NewAnthropicClient(apiKey string, s store.Store) *AnthropicClient {
 	c := anthropic.NewClient(option.WithAPIKey(apiKey))
-	return &Client{client: c, store: s}
+	return &AnthropicClient{client: c, store: s}
 }
 
 // Chat processes a natural language message, executes any tool calls, and returns the response.
-func (c *Client) Chat(ctx context.Context, userMessage string) (string, []string, error) {
+func (c *AnthropicClient) Chat(ctx context.Context, userMessage string) (string, []string, error) {
 	jobs, _ := c.store.ListJobs(ctx)
 	jobsJSON, _ := json.MarshalIndent(jobs, "", "  ")
 
@@ -108,7 +113,7 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, []string
 			}
 			toolUse := block.AsToolUse()
 
-			result, action, execErr := c.executeTool(ctx, toolUse.Name, toolUse.Input)
+			result, action, execErr := executeTool(ctx, c.store, toolUse.Name, toolUse.Input)
 			if execErr != nil {
 				result = fmt.Sprintf("Error: %v", execErr)
 			} else {
@@ -137,14 +142,15 @@ func (c *Client) Chat(ctx context.Context, userMessage string) (string, []string
 	return finalText, actions, nil
 }
 
-func (c *Client) executeTool(ctx context.Context, toolName string, input json.RawMessage) (string, string, error) {
+// executeTool is a package-level function so both AnthropicClient and OpenAIClient can use it.
+func executeTool(ctx context.Context, s store.Store, toolName string, input json.RawMessage) (string, string, error) {
 	switch toolName {
 	case "create_job":
-		return executeCreateJob(ctx, c.store, input)
+		return executeCreateJob(ctx, s, input)
 	case "update_job":
-		return executeUpdateJob(ctx, c.store, input)
+		return executeUpdateJob(ctx, s, input)
 	case "delete_job":
-		return executeDeleteJob(ctx, c.store, input)
+		return executeDeleteJob(ctx, s, input)
 	default:
 		return "", "", fmt.Errorf("unknown tool: %s", toolName)
 	}
