@@ -2,11 +2,14 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 
+	"github.com/ms/agent-daemon/internal/platform"
 	internalsvc "github.com/ms/agent-daemon/internal/service"
+	"github.com/ms/agent-daemon/internal/store"
 )
 
 func installLevel(cmd *cobra.Command) internalsvc.InstallLevel {
@@ -41,7 +44,30 @@ Use --system to install system-wide (starts at boot, requires admin/sudo).`,
 			levelStr = "system-level (boot daemon)"
 		}
 		fmt.Printf("✓ Installed agent-daemon as %s\n", levelStr)
-		fmt.Println("  Run 'agent-daemon start' to start it.")
+
+		// Absorb API keys from environment into the DB.
+		fmt.Println("\nConfiguring AI assistant keys...")
+		s, err := store.Open(platform.DBPath())
+		if err == nil {
+			absorbed, _ := absorbEnvKeys(s)
+			s.Close()
+			if absorbed == 0 {
+				hasEnv := os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("OPENAI_API_KEY") != ""
+				if level == internalsvc.LevelSystem && !hasEnv {
+					fmt.Println("\n  ⚠  No API keys found in environment.")
+					fmt.Println("  The AI assistant will not work until a key is configured.")
+					fmt.Println("  Options:")
+					fmt.Println("    1. Re-run with sudo -E to preserve env vars:")
+					fmt.Println("         sudo -E agent-daemon install --system")
+					fmt.Println("    2. After starting, open http://localhost:7700 → Settings")
+					fmt.Println("    3. Run:  sudo -E agent-daemon config absorb-env")
+				} else if absorbed == 0 {
+					fmt.Println("  No API keys in environment — configure via http://localhost:7700 → Settings")
+				}
+			}
+		}
+
+		fmt.Println("\n  Run 'agent-daemon start' to start it.")
 		return nil
 	},
 }
