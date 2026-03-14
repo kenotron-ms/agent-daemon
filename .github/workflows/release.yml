@@ -63,7 +63,7 @@ jobs:
 
       - name: Install Linux CGO deps (amd64)
         if: matrix.os == 'ubuntu-latest' && matrix.cgo == '1'
-        run: sudo apt-get install -y gcc libayatana-appindicator3-dev
+        run: sudo apt-get update && sudo apt-get install -y --fix-missing gcc libayatana-appindicator3-dev
 
       - name: Build
         env:
