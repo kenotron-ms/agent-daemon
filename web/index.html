@@ -25,7 +25,10 @@
       <section class="panel">
         <div class="panel-header">
           <h2>Jobs</h2>
-          <button class="btn btn-primary btn-sm" onclick="openAddJobModal()">+ Add Job</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick="pruneJobs()" title="Delete all disabled jobs">Prune</button>
+            <button class="btn btn-primary btn-sm" onclick="openAddJobModal()">+ Add Job</button>
+          </div>
         </div>
         <div id="jobs-list" class="jobs-list"><div class="loading">Loading…</div></div>
       </section>
@@ -81,10 +84,45 @@
               <option value="once">Once</option>
               <option value="loop">Loop</option>
               <option value="cron">Cron</option>
+              <option value="watch">Watch</option>
             </select>
             <input type="text" id="f-trigger-schedule" placeholder="e.g. 5m or 0 */5 * * * *" />
           </div>
           <div id="trigger-hint" class="hint"></div>
+        </div>
+
+        <!-- Watch trigger fields -->
+        <div id="trigger-watch" class="hidden">
+          <div class="form-group">
+            <label>Watch path *</label>
+            <input type="text" id="f-watch-path" placeholder="/path/to/file-or-folder" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Mode</label>
+              <select id="f-watch-mode">
+                <option value="notify">notify (OS-level)</option>
+                <option value="poll">poll</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Poll interval</label>
+              <input type="text" id="f-watch-poll-interval" placeholder="2s" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Debounce</label>
+              <input type="text" id="f-watch-debounce" placeholder="300ms" />
+            </div>
+            <div class="form-group" style="align-self:flex-end;padding-bottom:4px">
+              <label><input type="checkbox" id="f-watch-recursive" /> Recursive</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Events <span class="hint-inline">(comma-separated, empty = all)</span></label>
+            <input type="text" id="f-watch-events" placeholder="create,write,remove" />
+          </div>
         </div>
 
         <!-- Executor -->

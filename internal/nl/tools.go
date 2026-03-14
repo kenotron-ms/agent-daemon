@@ -35,13 +35,21 @@ func buildTools() []anthropic.ToolUnionParam {
 
 				// Trigger
 				"trigger_type": map[string]interface{}{
-					"type": "string", "enum": []string{"cron", "loop", "once"},
+					"type": "string", "enum": []string{"cron", "loop", "once", "watch"},
 					"description": "How the job is triggered",
 				},
 				"trigger_schedule": map[string]interface{}{
 					"type":        "string",
 					"description": "Cron expr, loop duration, or once delay. Empty once = run immediately.",
 				},
+
+				// watch
+				"watch_path":          map[string]interface{}{"type": "string", "description": "File or directory to watch (trigger_type=watch)"},
+				"watch_recursive":     map[string]interface{}{"type": "boolean", "description": "Watch subdirectories recursively"},
+				"watch_events":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Events: create, write, remove, rename, chmod. Empty = all."},
+				"watch_mode":          map[string]interface{}{"type": "string", "enum": []string{"notify", "poll"}, "description": "notify = OS-level (default), poll = polling"},
+				"watch_poll_interval": map[string]interface{}{"type": "string", "description": "Polling interval e.g. '2s' (poll mode only)"},
+				"watch_debounce":      map[string]interface{}{"type": "string", "description": "Quiet window after last event before firing e.g. '500ms'"},
 
 				// Executor
 				"executor": map[string]interface{}{
@@ -80,7 +88,7 @@ func buildTools() []anthropic.ToolUnionParam {
 				"max_retries": map[string]interface{}{"type": "integer"},
 				"enabled":     map[string]interface{}{"type": "boolean"},
 
-				"trigger_type":     map[string]interface{}{"type": "string", "enum": []string{"cron", "loop", "once"}},
+				"trigger_type":     map[string]interface{}{"type": "string", "enum": []string{"cron", "loop", "once", "watch"}},
 				"trigger_schedule": map[string]interface{}{"type": "string"},
 
 				"executor":             map[string]interface{}{"type": "string", "enum": []string{"shell", "claude-code", "amplifier"}},
@@ -96,6 +104,12 @@ func buildTools() []anthropic.ToolUnionParam {
 				"amplifier_bundle":     map[string]interface{}{"type": "string"},
 				"amplifier_model":      map[string]interface{}{"type": "string"},
 				"amplifier_context":    map[string]interface{}{"type": "object"},
+			"watch_path":          map[string]interface{}{"type": "string"},
+			"watch_recursive":     map[string]interface{}{"type": "boolean"},
+			"watch_events":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
+			"watch_mode":          map[string]interface{}{"type": "string", "enum": []string{"notify", "poll"}},
+			"watch_poll_interval": map[string]interface{}{"type": "string"},
+			"watch_debounce":      map[string]interface{}{"type": "string"},
 			},
 			Required: []string{"id"},
 		}),
@@ -139,6 +153,26 @@ type jobParams struct {
 	AmplifierBundle     string            `json:"amplifier_bundle"`
 	AmplifierModel      string            `json:"amplifier_model"`
 	AmplifierContext    map[string]string `json:"amplifier_context"`
+
+	WatchPath         string   `json:"watch_path"`
+	WatchRecursive    bool     `json:"watch_recursive"`
+	WatchEvents       []string `json:"watch_events"`
+	WatchMode         string   `json:"watch_mode"`
+	WatchPollInterval string   `json:"watch_poll_interval"`
+	WatchDebounce     string   `json:"watch_debounce"`
+}
+
+func applyWatchConfig(job *types.Job, p *jobParams) {
+	if p.WatchPath != "" {
+		job.Watch = &types.WatchConfig{
+			Path:         p.WatchPath,
+			Recursive:    p.WatchRecursive,
+			Events:       p.WatchEvents,
+			Mode:         p.WatchMode,
+			PollInterval: p.WatchPollInterval,
+			Debounce:     p.WatchDebounce,
+		}
+	}
 }
 
 func applyExecutorConfig(job *types.Job, p *jobParams) {
@@ -193,6 +227,7 @@ func executeCreateJob(ctx context.Context, s store.Store, input json.RawMessage)
 		UpdatedAt: time.Now(),
 	}
 	applyExecutorConfig(job, &p)
+	applyWatchConfig(job, &p)
 
 	if err := s.SaveJob(ctx, job); err != nil {
 		return "", "", fmt.Errorf("save job: %w", err)
@@ -237,6 +272,7 @@ func executeUpdateJob(ctx context.Context, s store.Store, input json.RawMessage)
 	if p.Executor != "" {
 		applyExecutorConfig(job, &p)
 	}
+	applyWatchConfig(job, &p)
 	job.UpdatedAt = time.Now()
 
 	if err := s.SaveJob(ctx, job); err != nil {

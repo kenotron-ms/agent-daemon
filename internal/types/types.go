@@ -7,9 +7,10 @@ import "time"
 type TriggerType string
 
 const (
-	TriggerLoop TriggerType = "loop" // repeating interval, e.g. "30s"
-	TriggerCron TriggerType = "cron" // standard cron expression
-	TriggerOnce TriggerType = "once" // run once after optional delay, then auto-disable
+	TriggerLoop  TriggerType = "loop"  // repeating interval, e.g. "30s"
+	TriggerCron  TriggerType = "cron"  // standard cron expression
+	TriggerOnce  TriggerType = "once"  // run once after optional delay, then auto-disable
+	TriggerWatch TriggerType = "watch" // fires when a file/directory changes
 )
 
 type Trigger struct {
@@ -52,6 +53,16 @@ type AmplifierConfig struct {
 	Context    map[string]string `json:"context,omitempty"`    // recipe context variables
 }
 
+// WatchConfig is the config for TriggerWatch.
+type WatchConfig struct {
+	Path         string   `json:"path"`                   // file or directory to watch
+	Recursive    bool     `json:"recursive"`              // watch subdirectories
+	Events       []string `json:"events,omitempty"`       // create, write, remove, rename, chmod — empty = all
+	Mode         string   `json:"mode"`                   // "notify" (OS-level) or "poll"
+	PollInterval string   `json:"pollInterval,omitempty"` // poll mode only, e.g. "2s"
+	Debounce     string   `json:"debounce,omitempty"`     // quiet window before firing, e.g. "500ms"
+}
+
 // ── Job ───────────────────────────────────────────────────────────────────────
 
 type Job struct {
@@ -71,6 +82,9 @@ type Job struct {
 	Shell      *ShellConfig      `json:"shell,omitempty"`
 	ClaudeCode *ClaudeCodeConfig `json:"claudeCode,omitempty"`
 	Amplifier  *AmplifierConfig  `json:"amplifier,omitempty"`
+
+	// Watch trigger config.
+	Watch *WatchConfig `json:"watch,omitempty"`
 
 	// Deprecated: top-level Command kept for backward compat with existing DB entries.
 	Command string `json:"command,omitempty"`

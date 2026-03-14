@@ -22,6 +22,7 @@ Current jobs will be provided in each message. You can:
 - "cron": repeating schedule via cron expression with seconds field (e.g. "0 */5 * * * *" = every 5 min, "0 30 9 * * 1-5" = 9:30am weekdays)
 - "loop": repeating interval as a Go duration (e.g. "30s", "5m", "1h")
 - "once": runs exactly once then auto-disables. trigger_schedule is an optional delay (e.g. "10m", "2h"). Leave empty to run right now.
+- "watch": fires when a file or directory changes. Requires watch_path. Optional: watch_recursive (bool), watch_events (array: "create","write","remove","rename","chmod"), watch_mode ("notify" for OS-level, "poll" for polling), watch_poll_interval (e.g. "2s"), watch_debounce (quiet window, e.g. "500ms").
 
 ## Executor types
 Every job has an executor that controls how it runs:
@@ -35,6 +36,7 @@ Every job has an executor that controls how it runs:
 "in 10 minutes" / "after 2h" → trigger "once", schedule "10m" / "2h".
 "every X" → "loop" or "cron".
 "at 3pm" / specific time → "cron".
+"watch", "monitor", "when file changes", "when folder changes" → trigger "watch", set watch_path.
 "run claude" / "ask claude code to" / "have claude code..." → executor "claude-code".
 "run amplifier" / "use amplifier" / "run recipe" → executor "amplifier".
 No executor mentioned → default "shell".

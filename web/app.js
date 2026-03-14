@@ -81,9 +81,11 @@ function renderJobs() {
 
 function renderJobCard(job) {
   const exec = job.executor || 'shell';
-  const triggerLabel = job.trigger.schedule
-    ? `${job.trigger.type}: ${job.trigger.schedule}`
-    : job.trigger.type;
+  const triggerLabel = job.trigger.type === 'watch' && job.watch
+    ? `watch: ${job.watch.path}`
+    : job.trigger.schedule
+      ? `${job.trigger.type}: ${job.trigger.schedule}`
+      : job.trigger.type;
   return `
   <div class="job-card ${job.enabled ? '' : 'disabled'}">
     <div class="job-card-header">
@@ -185,6 +187,15 @@ function openEditJobModal(id) {
     document.getElementById('f-amp-model').value = job.amplifier.model || '';
   }
 
+  if (job.trigger.type === 'watch' && job.watch) {
+    document.getElementById('f-watch-path').value = job.watch.path || '';
+    document.getElementById('f-watch-mode').value = job.watch.mode || 'notify';
+    document.getElementById('f-watch-poll-interval').value = job.watch.pollInterval || '';
+    document.getElementById('f-watch-debounce').value = job.watch.debounce || '';
+    document.getElementById('f-watch-recursive').checked = !!job.watch.recursive;
+    document.getElementById('f-watch-events').value = (job.watch.events || []).join(',');
+  }
+
   onTriggerTypeChange();
   onExecutorChange();
   document.getElementById('modal-overlay').classList.remove('hidden');
@@ -201,8 +212,12 @@ function onTriggerTypeChange() {
     once: 'Leave empty to run right now, or set a delay: "5m", "2h"',
     loop: 'Duration: "30s", "5m", "1h", "24h"',
     cron: 'Cron with seconds: "0 */5 * * * *" = every 5 min',
+    watch: 'Fires when the watched path changes',
   };
   document.getElementById('trigger-hint').textContent = hints[type] || '';
+  const isWatch = type === 'watch';
+  document.getElementById('f-trigger-schedule').closest('.trigger-row').style.display = isWatch ? 'none' : '';
+  document.getElementById('trigger-watch').classList.toggle('hidden', !isWatch);
 }
 
 function onExecutorChange() {
@@ -251,6 +266,19 @@ async function submitJob(e) {
       bundle: document.getElementById('f-amp-bundle').value.trim(),
       model: document.getElementById('f-amp-model').value.trim(),
     };
+  }
+
+  if (body.trigger.type === 'watch') {
+    const eventsRaw = document.getElementById('f-watch-events').value.trim();
+    body.watch = {
+      path: document.getElementById('f-watch-path').value.trim(),
+      mode: document.getElementById('f-watch-mode').value,
+      pollInterval: document.getElementById('f-watch-poll-interval').value.trim(),
+      debounce: document.getElementById('f-watch-debounce').value.trim(),
+      recursive: document.getElementById('f-watch-recursive').checked,
+      events: eventsRaw ? eventsRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
+    };
+    body.trigger.schedule = '';
   }
 
   try {

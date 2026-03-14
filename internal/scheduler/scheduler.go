@@ -162,6 +162,13 @@ func (s *Scheduler) AddJob(job *types.Job) {
 				s.dispatch(j)
 			}()
 		}
+
+	case types.TriggerWatch:
+		watchCtx, cancel := context.WithCancel(s.ctx)
+		s.mu.Lock()
+		s.loops[job.ID] = cancel
+		s.mu.Unlock()
+		go s.startWatcher(watchCtx, job)
 	}
 }
 

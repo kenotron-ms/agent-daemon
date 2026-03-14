@@ -4,6 +4,7 @@ go 1.25.6
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.26.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
 	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect
 	github.com/getlantern/golog v0.0.0-20190830074920-4ef2e798c2d7 // indirect
