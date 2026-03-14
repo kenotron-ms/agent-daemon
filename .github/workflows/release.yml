@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # macOS — CGO enabled, includes tray
+          - name: darwin-arm64
+            os: macos-latest
+            goos: darwin
+            goarch: arm64
+            cgo: "1"
+            asset: agent-daemon-darwin-arm64
+
+          - name: darwin-amd64
+            os: macos-13   # last Intel runner
+            goos: darwin
+            goarch: amd64
+            cgo: "1"
+            asset: agent-daemon-darwin-amd64
+
+          # Linux — CGO enabled on native amd64, disabled for arm64 cross-compile
+          - name: linux-amd64
+            os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            cgo: "1"
+            asset: agent-daemon-linux-amd64
+
+          - name: linux-arm64
+            os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            cgo: "0"
+            asset: agent-daemon-linux-arm64
+
+          # Windows — CGO disabled (tray excluded)
+          - name: windows-amd64
+            os: windows-latest
+            goos: windows
+            goarch: amd64
+            cgo: "0"
+            asset: agent-daemon-windows-amd64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Linux CGO deps (amd64)
+        if: matrix.os == 'ubuntu-latest' && matrix.cgo == '1'
+        run: sudo apt-get install -y gcc libayatana-appindicator3-dev
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          mkdir -p dist
+          go build \
+            -ldflags "-X github.com/ms/agent-daemon/internal/api.Version=${{ github.ref_name }} -s -w" \
+            -o dist/${{ matrix.asset }} \
+            ./cmd/agent-daemon/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Make binaries executable
+        run: chmod +x dist/agent-daemon-darwin-* dist/agent-daemon-linux-*
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum * > checksums.txt && cat checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "agent-daemon ${{ github.ref_name }}"
+          body: |
+            ## agent-daemon ${{ github.ref_name }}
+
+            ### Install
+
+            **macOS (Apple Silicon)**
+            ```bash
+            curl -Lo agent-daemon https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/agent-daemon-darwin-arm64
+            chmod +x agent-daemon && sudo mv agent-daemon /usr/local/bin/
+            agent-daemon install && agent-daemon start
+            ```
+
+            **macOS (Intel)**
+            ```bash
+            curl -Lo agent-daemon https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/agent-daemon-darwin-amd64
+            chmod +x agent-daemon && sudo mv agent-daemon /usr/local/bin/
+            agent-daemon install && agent-daemon start
+            ```
+
+            **Linux (amd64)**
+            ```bash
+            curl -Lo agent-daemon https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/agent-daemon-linux-amd64
+            chmod +x agent-daemon && sudo mv agent-daemon /usr/local/bin/
+            agent-daemon install && agent-daemon start
+            ```
+
+            **Windows**
+            Download `agent-daemon-windows-amd64.exe`, rename to `agent-daemon.exe`, place in your PATH, then run:
+            ```
+            agent-daemon.exe install
+            agent-daemon.exe start
+            ```
+
+            ### What's included
+            - macOS/Linux builds include the system tray app (`agent-daemon tray`)
+            - All builds include the web UI at `http://localhost:7700`
+            - Use `ANTHROPIC_API_KEY` env var to enable the AI assistant
+          files: |
+            dist/agent-daemon-darwin-arm64
+            dist/agent-daemon-darwin-amd64
+            dist/agent-daemon-linux-amd64
+            dist/agent-daemon-linux-arm64
+            dist/agent-daemon-windows-amd64.exe
+            dist/checksums.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true

@@ -39,6 +39,7 @@ func init() {
 		listCmd,
 		addCmd,
 		removeCmd,
+		pruneCmd,
 		serveCmd, // internal: invoked by service manager
 	)
 }

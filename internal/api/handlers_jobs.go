@@ -142,6 +142,24 @@ func (s *Server) disableJob(w http.ResponseWriter, r *http.Request) {
 	s.setJobEnabled(w, r, false)
 }
 
+func (s *Server) pruneJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.store.ListJobs(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	deleted := 0
+	for _, job := range jobs {
+		if !job.Enabled {
+			s.scheduler.RemoveJob(job.ID)
+			if err := s.store.DeleteJob(r.Context(), job.ID); err == nil {
+				deleted++
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"deleted": deleted})
+}
+
 func (s *Server) setJobEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
 	id := r.PathValue("id")
 	job, err := s.store.GetJob(r.Context(), id)

@@ -47,6 +47,15 @@ async function flushQueue() {
   await loadStatus();
 }
 
+async function pruneJobs() {
+  const disabled = jobs.filter(j => !j.enabled);
+  if (!disabled.length) { alert('No disabled jobs to prune.'); return; }
+  if (!confirm(`Delete ${disabled.length} disabled job(s)?`)) return;
+  const res = await api('POST', '/api/jobs/prune');
+  await loadJobs();
+  alert(`✓ Pruned ${res.deleted} job(s).`);
+}
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 let jobs = [];

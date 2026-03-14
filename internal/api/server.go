@@ -70,6 +70,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/jobs/{id}/trigger", s.triggerJob)
 	mux.HandleFunc("POST /api/jobs/{id}/enable", s.enableJob)
 	mux.HandleFunc("POST /api/jobs/{id}/disable", s.disableJob)
+	mux.HandleFunc("POST /api/jobs/prune", s.pruneJobs)
 
 	// Runs
 	mux.HandleFunc("GET /api/runs", s.listRuns)
