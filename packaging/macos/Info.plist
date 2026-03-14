@@ -9,7 +9,7 @@
     <key>CFBundleDisplayName</key>
     <string>Agent Daemon</string>
     <key>CFBundleExecutable</key>
-    <string>agent-daemon</string>
+    <string>AgentDaemon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>
