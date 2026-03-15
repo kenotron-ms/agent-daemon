@@ -73,7 +73,6 @@ func TestExecShell_CapsAccumulatorAt64KB(t *testing.T) {
 		t.Fatalf("expected exitCode 0, got %d", exitCode)
 	}
 
-	const cap64 = 64 * 1024
 	if len(output) > cap64 {
 		t.Errorf("output length %d exceeds 64KB cap (%d)", len(output), cap64)
 	}
