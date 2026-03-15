@@ -16,3 +16,4 @@ vendor/
 *.env
 keys.env
 packaging/macos/setup-github-secrets.sh
+.superpowers/
