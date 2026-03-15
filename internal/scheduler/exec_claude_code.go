@@ -1,7 +1,6 @@
 package scheduler
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,28 +28,20 @@ func execClaudeCode(ctx context.Context, job *types.Job, b *Broadcaster, runID s
 			cmd.Dir = job.CWD
 		}
 
-		var buf bytes.Buffer
-		cmd.Stdout = &buf
-		cmd.Stderr = &buf
-
-		runErr := cmd.Run()
-		stepOut := buf.String()
-
 		if i > 0 {
-			allOutput.WriteString(fmt.Sprintf("\n--- step %d ---\n", i+1))
+			sep := fmt.Sprintf("\n--- step %d ---\n", i+1)
+			b.Write(runID, sep)
+			allOutput.WriteString(sep)
 		}
+
+		stepOut, code, runErr := streamCommand(cmd, b, runID)
 		allOutput.WriteString(stepOut)
 
 		if runErr != nil {
-			if cmd.ProcessState != nil {
-				exitCode = cmd.ProcessState.ExitCode()
-			} else {
-				exitCode = -1
-			}
-			return allOutput.String(), exitCode, runErr
+			return allOutput.String(), code, runErr
 		}
 
-		// Extract session_id from JSON output to chain steps
+		// Extract session_id from JSON output to chain multi-step conversations.
 		if sessionID == "" {
 			if id := extractSessionID(stepOut); id != "" {
 				sessionID = id
