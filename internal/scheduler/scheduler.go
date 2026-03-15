@@ -34,7 +34,7 @@ func New(s store.Store, q *queue.BoundedQueue) *Scheduler {
 	return &Scheduler{
 		store:   s,
 		queue:   q,
-		runner:  NewRunner(s),
+		runner:  NewRunner(s, nil), // broadcaster wired in a later task
 		cronIDs: make(map[string]cron.EntryID),
 		loops:   make(map[string]context.CancelFunc),
 		cron: cron.New(
