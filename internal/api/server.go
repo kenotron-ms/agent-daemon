@@ -27,7 +27,7 @@ type Server struct {
 	httpSrv     *http.Server
 }
 
-func NewServer(cfg *config.Config, s store.Store, sched *scheduler.Scheduler, b *scheduler.Broadcaster, q *queue.BoundedQueue, startedAt time.Time) *Server {
+func NewServer(cfg *config.Config, s store.Store, sched *scheduler.Scheduler, q *queue.BoundedQueue, startedAt time.Time, b *scheduler.Broadcaster) *Server {
 	srv := &Server{
 		cfg:         cfg,
 		store:       s,
