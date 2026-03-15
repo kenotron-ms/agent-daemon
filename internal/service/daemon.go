@@ -77,7 +77,7 @@ func (d *Daemon) Run() error {
 	d.queue = jobQueue
 	d.scheduler = sched
 
-	srv := api.NewServer(d.cfg, d.store, sched, jobQueue, d.startedAt)
+	srv := api.NewServer(d.cfg, d.store, sched, broadcaster, jobQueue, d.startedAt)
 	d.server = srv
 
 	if err := sched.Start(d.ctx); err != nil {

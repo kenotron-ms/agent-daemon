@@ -27,13 +27,14 @@ type Server struct {
 	httpSrv     *http.Server
 }
 
-func NewServer(cfg *config.Config, s store.Store, sched *scheduler.Scheduler, q *queue.BoundedQueue, startedAt time.Time) *Server {
+func NewServer(cfg *config.Config, s store.Store, sched *scheduler.Scheduler, b *scheduler.Broadcaster, q *queue.BoundedQueue, startedAt time.Time) *Server {
 	srv := &Server{
-		cfg:       cfg,
-		store:     s,
-		scheduler: sched,
-		queue:     q,
-		startedAt: startedAt,
+		cfg:         cfg,
+		store:       s,
+		scheduler:   sched,
+		broadcaster: b,
+		queue:       q,
+		startedAt:   startedAt,
 	}
 	srv.nlClient = nl.NewClientFromConfig(cfg, s)
 	return srv
