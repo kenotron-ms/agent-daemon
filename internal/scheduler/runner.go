@@ -64,8 +64,10 @@ func (r *Runner) runAttempt(job *types.Job, attempt int) (stopRetrying bool) {
 	}
 	_ = r.store.SaveRun(context.Background(), run)
 
-	r.broadcaster.Register(run.ID)
-	defer r.broadcaster.Complete(run.ID)
+	if r.broadcaster != nil {
+		r.broadcaster.Register(run.ID)
+		defer r.broadcaster.Complete(run.ID)
+	}
 
 	slog.Info("job starting", "job", job.Name, "executor", job.ResolvedExecutor(), "attempt", attempt)
 
