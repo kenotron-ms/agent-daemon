@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ms/agent-daemon/internal/api"
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "agent-daemon",
-	Short: "Scheduled job execution daemon with web UI",
+	Use:     "agent-daemon",
+	Version: api.Version,
+	Short:   "Scheduled job execution daemon with web UI",
 	Long: `agent-daemon — a cross-platform scheduled job runner.
 
 Runs as a system service (launchd / systemd / Windows Service) with:

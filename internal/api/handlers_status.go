@@ -7,7 +7,7 @@ import (
 	"github.com/ms/agent-daemon/internal/types"
 )
 
-const Version = "0.1.0"
+var Version = "0.1.0"
 
 func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	jobs, _ := s.store.ListJobs(r.Context())

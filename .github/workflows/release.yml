@@ -73,8 +73,10 @@ jobs:
           CGO_ENABLED: ${{ matrix.cgo }}
         run: |
           mkdir -p dist
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
           go build \
-            -ldflags "-X github.com/ms/agent-daemon/internal/api.Version=${{ github.ref_name }} -s -w" \
+            -ldflags "-X github.com/ms/agent-daemon/internal/api.Version=${VERSION} -s -w" \
             -o dist/${{ matrix.asset }} \
             ./cmd/agent-daemon/
 
