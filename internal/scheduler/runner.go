@@ -86,6 +86,12 @@ func (r *Runner) runAttempt(job *types.Job, attempt int) (stopRetrying bool) {
 
 	now := time.Now()
 	run.EndedAt = &now
+	// If the executor produced no output but did return an error (e.g. binary
+	// not found, bad CWD), surface the error text so the UI shows something
+	// useful instead of a blank error.
+	if output == "" && runErr != nil {
+		output = runErr.Error()
+	}
 	run.Output = capOutput(output)
 	run.ExitCode = exitCode
 

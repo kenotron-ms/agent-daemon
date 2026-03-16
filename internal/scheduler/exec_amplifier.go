@@ -4,11 +4,41 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/ms/agent-daemon/internal/types"
 )
+
+// amplifierCmd builds an exec.Cmd for the amplifier binary, augmenting PATH
+// so the binary is found even when the daemon runs under launchd (which
+// inherits a minimal PATH that omits ~/.local/bin and /usr/local/bin).
+func amplifierCmd(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "amplifier", args...)
+
+	// Prepend common user-binary locations to whatever PATH the daemon has.
+	home, _ := os.UserHomeDir()
+	extra := strings.Join([]string{
+		home + "/.local/bin",
+		"/usr/local/bin",
+		"/opt/homebrew/bin",
+	}, ":")
+	current := os.Getenv("PATH")
+	if current != "" {
+		extra += ":" + current
+	}
+	env := os.Environ()
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + extra
+			cmd.Env = env
+			return cmd
+		}
+	}
+	cmd.Env = append(env, "PATH="+extra)
+	return cmd
+}
 
 func execAmplifier(ctx context.Context, job *types.Job, b *Broadcaster, runID string) (output string, exitCode int, err error) {
 	cfg := job.Amplifier
@@ -34,7 +64,7 @@ func execAmplifierPrompt(ctx context.Context, job *types.Job, cfg *types.Amplifi
 
 	for i, step := range steps {
 		args := buildAmplifierArgs(cfg, step, sessionID)
-		cmd := exec.CommandContext(ctx, "amplifier", args...)
+		cmd := amplifierCmd(ctx, args...)
 		if job.CWD != "" {
 			cmd.Dir = job.CWD
 		}
@@ -80,7 +110,7 @@ func execAmplifierRecipe(ctx context.Context, job *types.Job, cfg *types.Amplifi
 		args = append([]string{"--bundle", cfg.Bundle}, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, "amplifier", args...)
+	cmd := amplifierCmd(ctx, args...)
 	if job.CWD != "" {
 		cmd.Dir = job.CWD
 	}
