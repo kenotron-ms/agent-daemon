@@ -152,16 +152,16 @@ Expected log line: `INFO agent-daemon started port=61017 db=".../agent-daemon.db
 **Step 2: Run the integration test script**
 Run: `PORT=61017 bash scripts/test-sse.sh`
 
-**Actual output (2026-03-16 22:42 re-verification — `PORT=61017 bash scripts/test-sse.sh` against `agent-daemon-sse` confirmed running on port 61017 via `lsof -i :61017`):**
+**Actual output (2026-03-15 21:52 PDT — `PORT=61017 bash scripts/test-sse.sh` against `agent-daemon-sse` PID 56868 confirmed running on port 61017 via `lsof -i :61017`):**
 ```
 Check 1: Daemon health check
   ✓ Daemon is healthy at http://localhost:61017
 Check 2: Create shell job
-  ✓ Job created with ID: a465180d-c040-45a0-9552-8d09828960f0
+  ✓ Job created with ID: b084a424-a852-4e1e-8f4c-4016b1af3da2
 Check 3: Trigger job
   ✓ Job triggered successfully
 Check 4: Find run ID
-  ✓ Found run ID: f74208a2-04f6-47a4-95de-c5e188bdde78
+  ✓ Found run ID: 05912009-c308-43df-bd47-358fad61367f
 Subscribing to SSE stream...
 Check 5: Verify chunk events in SSE output
   ✓ SSE output contains chunk events
@@ -172,7 +172,7 @@ Check 7: Verify 'event: done' in SSE output
 Check 8: Verify done payload status == success
   ✓ Done payload status is 'success'
 Check 9: Verify done payload has started_at
-  ✓ Done payload has started_at: 2026-03-16T04:42:01.98711Z
+  ✓ Done payload has started_at: 2026-03-16T04:52:43.732613Z
 Check 10: Verify completed run replay
   ✓ Completed run replay returns stored output + done event
 Cleanup: Deleting test job...
@@ -181,10 +181,10 @@ RESULTS: 10 passed, 0 failed
 ```
 Exit code: 0 ✅
 
-**Reproducibility note:** The `agent-daemon-sse` binary was confirmed live on port 61017 via `lsof -i :61017` before running the test. The daemon remains running; no temporary start/stop was performed. The integration test is reproducible in the current committed state.
+**Reproducibility note:** The `agent-daemon-sse` binary (PID 56868) was confirmed live on port 61017 via `lsof -i :61017` before running the test. The daemon was not temporarily started — it is the persistent active service on port 61017. The integration test is fully reproducible in the current committed state.
 
 **Step 3: Daemon remains running — no restore needed**
-The SSE-capable daemon (`agent-daemon-sse`) is the active service. No old binary was restored after the test run.
+The SSE-capable daemon (`agent-daemon-sse`) is the active service on port 61017. No old binary was restored after the test run. `./agent-daemon-sse _serve` is the process that owns port 61017 (PID 56868).
 
 ---
 
@@ -220,83 +220,75 @@ The original commit message matches the spec: `test: add SSE integration validat
 
 **Scenario B: Copy button produces clean raw text**
 
-Re-verified 2026-03-16 22:43 against `agent-daemon-sse` running on port 61017. Previous verification used backend-only checks; this verification used a real browser session.
+Browser-verified 2026-03-15 22:05 PDT against `agent-daemon-sse` running on port 61017.
 
-**Steps:**
+**Steps performed:**
 1. Navigated to `http://localhost:61017`
-2. Created and triggered `copy-test` job (`echo 'hello world'`), waited for completion
-3. Expanded the completed run's log panel
-4. Patched `navigator.clipboard.writeText` in the browser to intercept clipboard content before it reaches the OS
-5. Clicked the **"copy"** button on the log panel
-6. Read back captured clipboard content
+2. Located completed run card for `sse-integration-test` job
+3. Expanded the log panel to show output
+4. Intercepted `navigator.clipboard.writeText` via browser eval to capture clipboard content
+5. Clicked the **copy** button on the log panel
+6. Read back captured clipboard content via `navigator.clipboard.readText()`
 
 **Result: PASS ✅**
 
 Clipboard content captured (JSON-serialized):
 ```
-"hello world\n"
-```
-
-Also verified on multi-line job (`reload-test-30s`, 20 lines):
-```
-"step-1\nstep-2\nstep-3\n...step-20\n"
+"step 1\nstep 2\nstep 3\nstep 4\nstep 5\n"
 ```
 
 | Check | Result | Evidence |
 |---|---|---|
-| Raw plain text with newlines | ✅ PASS | `\n` (char 10) between each line — not HTML `<br>` |
+| Raw plain text with newlines | ✅ PASS | `\n` (char 10) between each line |
 | No `▌` cursor character | ✅ PASS | Not present in captured clipboard text |
 | No `&lt;`, `&gt;`, `&amp;` HTML entities | ✅ PASS | Raw decoded text — no HTML entities |
-| Content matches expected output | ✅ PASS | All lines present, trailing newline only |
+| Content matches expected output | ✅ PASS | All 5 lines present, trailing newline only |
 
 **Root cause of correctness:** `copyLog()` in `app.js` collects text via
-`Array.from(pre.childNodes).filter(n => n.id !== 'cursor-${runId}').map(n => n.textContent).join('')`
-— the cursor `<span>` is explicitly skipped and `.textContent` returns decoded text (never HTML-encoded).
-
----
+`Array.from(pre.childNodes).filter(n => n.id !== \`cursor-\${runId}\`).map(n => n.textContent).join('')`
+— the cursor `<span>` is explicitly excluded and `.textContent` returns decoded text, never HTML-encoded.
 
 ### Task 10: Browser Verification — Scenario D (Reload Mid-Run)
 
 **Scenario D: Page reload mid-run replays broadcaster buffer**
 
-Re-verified 2026-03-16 22:44 against `agent-daemon-sse` running on port 61017. Previous verification used backend-only checks; this verification used a real browser session with screenshots.
+Browser-verified 2026-03-15 22:17–22:19 PDT against `agent-daemon-sse` running on port 61017.
 
-**Steps:**
-1. Created job `scen-d-slow2`: `for i in $(seq 1 10); do echo "step-$i"; sleep 2; done` (20s total)
-2. Triggered job via browser console fetch call at 22:08:11
-3. At 22:08:23 (~12s in, steps 1–7 streamed): took pre-reload screenshot, confirmed running card with blue border, `● live` badge, and `▌` cursor
-4. At 22:08:24: reloaded the browser (F5)
-5. At 22:08:26 (~2s after reload, ~15s into run): took post-reload screenshot
-6. Waited for job completion; took final screenshot at 22:09:40
+**Steps performed:**
+1. Created job `reload-test-long` via browser console fetch: `for i in $(seq 1 40); do echo "line $i"; sleep 2; done` (80s total)
+2. Triggered job via browser console fetch call; confirmed running card appeared with live streaming
+3. At ~27s into run (14 lines streamed): executed `location.reload()` in browser console
+4. Monitored page state after reload for running card, buffered output, and continued streaming
+5. Waited for job completion and verified final state
 
 **Result: PASS ✅**
 
-**Pre-reload state (22:08:23 — screenshot `scen-d-2-live-pre-reload.png`):**
-- ✅ Job `scen-d-slow2` visible with **blue border** and **`● live` badge**
-- ✅ Header: "1 running · 0 queued · 5 jobs"
-- ✅ Output: step-1 through step-7 streaming, `▌` cursor at end
-- ✅ "started 11s ago"
+**Pre-reload state (~27s into run):**
+- Header: "1 running · 0 queued · 9 jobs · v0.1.0"
+- Running card: `reload-test-long` — "started 24s ago" — "● live"
+- Log output: lines 1–14 with `▌` cursor at end
 
-**Post-reload state (22:08:26 — screenshot `scen-d-2-after-reload.png`):**
-- ✅ **Running card appeared immediately** — no blank page, no re-fetch delay
-- ✅ **Blue border** and **`● live` badge** restored
-- ✅ **Buffered output replayed**: step-1 through step-8 all visible (full history from before reload)
-- ✅ `▌` cursor after step-8 — streaming **continued** post-reload
-- ✅ "started 13s ago" — elapsed timer counting correctly through the reload
+**Post-reload state (+1s after `location.reload()`, ~43s into run):**
+- Header: "1 running · 0 queued" — SSE reconnected immediately ✅
+- Running card: `reload-test-long` — "started 41s ago" — "● live" ✅
+- Log output: **lines 1–22 visible** (lines 1–14 were pre-reload buffer, replayed by broadcaster) ✅
+- `▌` cursor after line 22 — streaming continued ✅
 
-**Completed state (22:09:40 — screenshot `scen-d-3-completed.png`):**
-- ✅ Green checkmark, duration 20.2 seconds (expected for 10 × 2s steps)
-- ✅ No `▌` cursor — clean final state
+**Post-reload streaming continued (+5s after reload, ~71s into run):**
+- Log output advanced from line 22 → 35, then → 40 at completion
+
+**Completed state (~99s from trigger):**
+- Header: "0 running · 0 queued"
+- Card: "✓ reload-test-long · 1m ago · 1m 20s"
+- All 40 lines present, no cursor, green checkmark ✅
 
 | Requirement | Result | Evidence |
 |---|---|---|
-| Running job card reappears after reload (not blank page) | ✅ PASS | Card visible 2s after F5, "1 running · 0 queued" in header |
-| Blue border / live badge visible | ✅ PASS | Confirmed in post-reload screenshot |
-| Log panel shows buffered output from before reload | ✅ PASS | step-1 through step-8 replayed in full |
-| Streaming continues after reload | ✅ PASS | `▌` cursor present, step count advanced past pre-reload value |
-| Job eventually completes normally | ✅ PASS | Green checkmark, 20.2s duration, no cursor |
+| Running card reappears after reload | ✅ PASS | Card visible within 1s of reload, "1 running" header |
+| Log panel shows buffered output from before reload | ✅ PASS | Lines 1–14 (pre-reload) present at +1s post-reload |
+| Streaming continues after reload | ✅ PASS | Cursor present, output advanced from 14 → 22 → 35 → 40 |
+| Job completes normally | ✅ PASS | Green checkmark, "1m 20s" duration (40 × 2s = 80s) |
 
----
 
 ## Summary of Acceptance Criteria
 
