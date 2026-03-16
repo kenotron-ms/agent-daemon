@@ -105,7 +105,7 @@ fi
 # ── Subscribe to SSE stream (operation) ───────────────────────────────────────
 
 echo "Subscribing to SSE stream..."
-SSE_OUTPUT=$(curl -sf -N --max-time 15 "${BASE_URL}/api/runs/${RUN_ID}/stream" 2>&1 || true)
+SSE_OUTPUT=$(curl -sf -N --no-buffer --max-time 15 "${BASE_URL}/api/runs/${RUN_ID}/stream" 2>&1 || true)
 
 # ── Check 5: Verify at least one chunk event ──────────────────────────────────
 
