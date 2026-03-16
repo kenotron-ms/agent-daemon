@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/ms/agent-daemon/internal/types"
 )
 
-func execClaudeCode(ctx context.Context, job *types.Job, b *Broadcaster, runID string) (output string, exitCode int, err error) {
+func (r *Runner) execClaudeCode(ctx context.Context, job *types.Job, runID string) (output string, exitCode int, err error) {
 	cfg := job.ClaudeCode
 	if cfg == nil || cfg.Prompt == "" {
 		return "", -1, fmt.Errorf("claude-code executor requires a prompt")
@@ -23,22 +22,18 @@ func execClaudeCode(ctx context.Context, job *types.Job, b *Broadcaster, runID s
 
 	for i, step := range steps {
 		args := buildClaudeArgs(cfg, step, sessionID)
-		bin, _ := resolveBinary("claude")
-		if bin == "" {
-			bin = "claude"
-		}
-		cmd := exec.CommandContext(ctx, bin, args...)
+		cmd := r.commandFor(ctx, "claude", args...)
 		if job.CWD != "" {
 			cmd.Dir = job.CWD
 		}
 
 		if i > 0 {
 			sep := fmt.Sprintf("\n--- step %d ---\n", i+1)
-			b.Write(runID, sep)
+			r.broadcaster.Write(runID, sep)
 			allOutput.WriteString(sep)
 		}
 
-		stepOut, code, runErr := streamCommand(cmd, b, runID)
+		stepOut, code, runErr := streamCommand(cmd, r.broadcaster, runID)
 		allOutput.WriteString(stepOut)
 
 		if runErr != nil {

@@ -2,11 +2,8 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -14,34 +11,9 @@ import (
 	"github.com/ms/agent-daemon/internal/types"
 )
 
-// resolveBinary returns the absolute path to a named binary. When the daemon
-// runs as a launchd service it inherits a minimal PATH that omits user install
-// locations like ~/.local/bin, so exec.LookPath alone is not sufficient.
-func resolveBinary(name string) (string, error) {
-	// Fast path: already on the daemon's PATH.
-	if p, err := exec.LookPath(name); err == nil {
-		return p, nil
-	}
-
-	// Slow path: check common user-install locations.
-	home, _ := os.UserHomeDir()
-	candidates := []string{
-		filepath.Join(home, ".local", "bin", name),
-		"/usr/local/bin/" + name,
-		"/opt/homebrew/bin/" + name,
-	}
-	for _, c := range candidates {
-		if info, err := os.Stat(c); err == nil && !info.IsDir() {
-			return c, nil
-		}
-	}
-	return "", fmt.Errorf("%s binary not found in PATH or common locations (%s)",
-		name, strings.Join(candidates, ", "))
-}
-
 const cap64 = 64 * 1024 // 64KB accumulator cap
 
-func execShell(ctx context.Context, job *types.Job, b *Broadcaster, runID string) (output string, exitCode int, err error) {
+func (r *Runner) execShell(ctx context.Context, job *types.Job, runID string) (output string, exitCode int, err error) {
 	// Resolve command: prefer Shell config, fall back to top-level Command field.
 	command := job.Command
 	if job.Shell != nil && job.Shell.Command != "" {
@@ -57,15 +29,15 @@ func execShell(ctx context.Context, job *types.Job, b *Broadcaster, runID string
 	if job.CWD != "" {
 		cmd.Dir = job.CWD
 	}
-	if len(job.RuntimeEnv) > 0 {
-		env := os.Environ()
-		for k, v := range job.RuntimeEnv {
-			env = append(env, k+"="+v)
-		}
-		cmd.Env = env
-	}
 
-	return streamCommand(cmd, b, runID)
+	// Start with the user's base env, then overlay any job-specific vars on top.
+	env := r.baseEnv()
+	for k, v := range job.RuntimeEnv {
+		env = append(env, k+"="+v)
+	}
+	cmd.Env = env
+
+	return streamCommand(cmd, r.broadcaster, runID)
 }
 
 // streamCommand runs cmd, streaming output chunks to b while accumulating up
@@ -133,3 +105,5 @@ func streamCommand(cmd *exec.Cmd, b *Broadcaster, runID string) (output string, 
 
 	return acc.String(), exitCode, waitErr
 }
+
+

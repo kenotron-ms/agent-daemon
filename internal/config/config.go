@@ -12,6 +12,18 @@ const (
 	DefaultQueueSize   = 100
 )
 
+// UserContext holds the identity of the user who ran `agent-daemon install`.
+// It is captured once at install time — when the process is running in the
+// user's interactive shell session — and stored in the DB so the daemon can
+// recreate the user's environment when spawning jobs, even under launchd/
+// systemd where $HOME, $SHELL, and $PATH are stripped to bare minimums.
+type UserContext struct {
+	HomeDir  string `json:"homeDir"`
+	Username string `json:"username"`
+	Shell    string `json:"shell"` // absolute path, e.g. /bin/zsh
+	UID      string `json:"uid,omitempty"`
+}
+
 type Config struct {
 	Port        int    `json:"port"`
 	MaxParallel int    `json:"maxParallel"`
@@ -23,6 +35,7 @@ type Config struct {
 	OpenAIModel    string `json:"openAIModel,omitempty"` // e.g. "gpt-5.4"
 	AIProvider     string `json:"aiProvider,omitempty"`  // "anthropic" | "openai"
 	LogLevel    string `json:"logLevel"`
+	UserContext *UserContext `json:"userContext,omitempty"`
 }
 
 func Defaults() *Config {

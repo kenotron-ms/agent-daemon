@@ -62,7 +62,7 @@ func (d *Daemon) Run() error {
 	d.startedAt = time.Now()
 
 	broadcaster := scheduler.NewBroadcaster()
-	runner := scheduler.NewRunner(d.store, broadcaster)
+	runner := scheduler.NewRunner(d.store, broadcaster, d.cfg.UserContext)
 	executeFunc := func(job *types.Job) {
 		runner.Execute(job)
 		if job.Trigger.Type == types.TriggerOnce {

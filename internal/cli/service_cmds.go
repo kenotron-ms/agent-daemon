@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/user"
 
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 
+	"github.com/ms/agent-daemon/internal/config"
 	"github.com/ms/agent-daemon/internal/platform"
 	internalsvc "github.com/ms/agent-daemon/internal/service"
 	"github.com/ms/agent-daemon/internal/store"
@@ -45,10 +48,19 @@ Use --system to install system-wide (starts at boot, requires admin/sudo).`,
 		}
 		fmt.Printf("✓ Installed agent-daemon as %s\n", levelStr)
 
-		// Absorb API keys from environment into the DB.
+		// Absorb API keys and capture installing user's context into the DB.
 		fmt.Println("\nConfiguring AI assistant keys...")
 		s, err := store.Open(platform.DBPath())
 		if err == nil {
+			// Capture user identity now — we're running in the user's shell
+			// session so $HOME, $SHELL, and $USER are correct and complete.
+			if uc := captureUserContext(); uc != nil {
+				if cfg, cerr := s.GetConfig(context.Background()); cerr == nil {
+					cfg.UserContext = uc
+					_ = s.SaveConfig(context.Background(), cfg)
+					fmt.Printf("  \u2713 Captured user context (home: %s, shell: %s)\n", uc.HomeDir, uc.Shell)
+				}
+			}
 			absorbed, _ := absorbEnvKeys(s)
 			s.Close()
 			if absorbed == 0 {
@@ -133,6 +145,29 @@ var serveCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return internalsvc.RunDaemon()
 	},
+}
+
+// captureUserContext records the identity of the installing user so the daemon
+// can recreate a proper shell environment when spawning jobs — even under
+// launchd/systemd where $HOME, $SHELL, and $PATH are stripped to bare minimums.
+// This must be called during `install`, not at daemon startup, because that's
+// the one moment we're guaranteed to be running in the user's interactive session.
+func captureUserContext() *config.UserContext {
+	u, err := user.Current()
+	if err != nil {
+		return nil
+	}
+	home, _ := os.UserHomeDir()
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+	return &config.UserContext{
+		HomeDir:  home,
+		Username: u.Username,
+		Shell:    shell,
+		UID:      u.Uid,
+	}
 }
 
 func init() {
