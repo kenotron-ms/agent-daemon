@@ -323,30 +323,67 @@ function renderRuns(runs) {
 }
 
 function renderRunCard(run) {
-  const icons = { success: '✓', failed: '✗', timeout: '⏱', running: '●', pending: '○', skipped: '—' };
-  const colors = { success: 'var(--green)', failed: 'var(--red)', timeout: 'var(--yellow)', running: 'var(--blue)', pending: 'var(--text2)', skipped: 'var(--text2)' };
-  const icon = icons[run.status] || '?';
-  const color = colors[run.status] || 'var(--text2)';
-  const when = run.endedAt ? timeAgo(run.endedAt) : 'running…';
-  const duration = run.endedAt ? durationMs(new Date(run.startedAt), new Date(run.endedAt)) : '';
-  const hasOutput = run.output && run.output.trim().length > 0;
-  const outputId = `out-${run.id}`;
+  const name = esc(run.jobName || run.jobId);
+  const attemptSuffix = run.attempt > 1 ? ` · attempt ${run.attempt}` : '';
+
+  if (run.status === 'running') {
+    return `
+  <div class="run-card live" id="run-${run.id}">
+    <div class="run-header">
+      <span class="run-status-icon" id="status-icon-${run.id}" style="color:#2196F3">●</span>
+      <span class="run-name">${name}${attemptSuffix}</span>
+      <span class="run-time" id="run-time-${run.id}">started ${timeAgo(run.startedAt)}</span>
+      <span class="live-badge" id="live-badge-${run.id}">● live</span>
+      <a href="#" class="log-toggle" onclick="toggleLog('${run.id}', this);return false">hide ▴</a>
+    </div>
+    <div class="log-panel" id="log-${run.id}">
+      <div class="log-toolbar">
+        <span class="log-label" id="log-label-${run.id}">streaming output</span>
+        <button class="log-copy-btn" onclick="copyLog('${run.id}')">copy</button>
+      </div>
+      <pre class="log-output" id="logout-${run.id}"><span id="cursor-${run.id}" class="log-cursor">▌</span></pre>
+    </div>
+  </div>`;
+  }
+
+  const isFailed = run.status !== 'success';
+  const icon = run.status === 'success' ? '✓' : '✕';
+  const iconColor = run.status === 'success' ? 'var(--green)' : 'var(--red)';
+  const failedClass = isFailed ? ' run-failed' : '';
+
   return `
-  <div class="run-card">
-    <div class="run-status-icon" style="color:${color}">${icon}</div>
-    <div class="run-info">
-      <div class="run-job-name">${esc(run.jobName || run.jobId)}</div>
-      <div class="run-meta">${when}${duration ? ' · ' + duration : ''}${run.attempt > 1 ? ` · attempt ${run.attempt}` : ''}${hasOutput ? ` <a href="#" class="run-log-toggle" onclick="toggleRunLog('${outputId}',this);return false">logs</a>` : ''}</div>
-      ${hasOutput ? `<pre class="run-output hidden" id="${outputId}">${esc(run.output)}</pre>` : ''}
+  <div class="run-card${failedClass}" id="run-${run.id}">
+    <div class="run-header">
+      <span class="run-status-icon" style="color:${iconColor}">${icon}</span>
+      <span class="run-name">${name}${attemptSuffix}</span>
+      <span class="run-time">${timeAgo(run.startedAt)} · ${durationMs(new Date(run.startedAt), new Date(run.endedAt))}</span>
+      <a href="#" class="log-toggle" onclick="toggleLog('${run.id}', this);return false">logs ▾</a>
+    </div>
+    <div class="log-panel hidden" id="log-${run.id}">
+      <div class="log-toolbar">
+        <span class="log-label" id="log-label-${run.id}">output</span>
+        <button class="log-copy-btn" onclick="copyLog('${run.id}')">copy</button>
+      </div>
+      <pre class="log-output" id="logout-${run.id}">${esc(run.output || '')}</pre>
     </div>
   </div>`;
 }
 
-function toggleRunLog(id, link) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const hidden = el.classList.toggle('hidden');
-  link.textContent = hidden ? 'logs' : 'hide logs';
+function toggleLog(id, link) {
+  const panel = document.getElementById(`log-${id}`);
+  if (!panel) return;
+  const hidden = panel.classList.toggle('hidden');
+  link.textContent = hidden ? 'logs ▾' : 'hide ▴';
+}
+
+function copyLog(runId) {
+  const pre = document.getElementById(`logout-${runId}`);
+  if (!pre) return;
+  const text = Array.from(pre.childNodes)
+    .filter(n => n.id !== `cursor-${runId}`)
+    .map(n => n.textContent)
+    .join('');
+  navigator.clipboard.writeText(text).catch(() => {});
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
