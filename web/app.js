@@ -300,26 +300,91 @@ async function submitJob(e) {
 
 // ── Runs ──────────────────────────────────────────────────────────────────────
 
+const liveSources   = {};          // runId → EventSource (open SSE connections)
+const failedSources = new Set();   // runIds that errored via SSE — never reconnect
+
 async function loadRuns() {
+  let runs;
   try {
-    const runs = await api('GET', '/api/runs?limit=30');
-    renderRuns(runs);
-  } catch {}
+    runs = await api('GET', '/api/runs?limit=30');
+  } catch { return; }
+
+  const list = document.getElementById('runs-list');
+
+  if (!runs.length) {
+    if (!list.querySelector('.run-card')) {
+      list.innerHTML = '<div class="empty">No activity yet.</div>';
+    }
+    return;
+  }
+
+  // Remove stale empty-state placeholder if runs appeared
+  const emptyEl = list.querySelector('.empty');
+  if (emptyEl) emptyEl.remove();
+
+  // Build set of current run IDs from API response
+  const currentIds = new Set(runs.map(r => r.id));
+
+  // Remove cards no longer in the API response
+  list.querySelectorAll('.run-card').forEach(el => {
+    const runId = el.id.replace('run-', '');
+    if (!currentIds.has(runId)) {
+      if (liveSources[runId]) {
+        liveSources[runId].close();
+        delete liveSources[runId];
+      }
+      el.remove();
+    }
+  });
+
+  // Iterate oldest-first so insertAdjacentHTML('afterbegin') leaves newest at top
+  [...runs].reverse().forEach(run => {
+    const existing = document.getElementById(`run-${run.id}`);
+
+    if (existing) {
+      // Update elapsed time in-place
+      const timeEl = document.getElementById(`run-time-${run.id}`);
+      if (timeEl) {
+        if (run.status === 'running') {
+          timeEl.textContent = `started ${timeAgo(run.startedAt)}`;
+        } else {
+          timeEl.textContent = `${timeAgo(run.startedAt)} · ${durationMs(new Date(run.startedAt), new Date(run.endedAt))}`;
+        }
+      }
+
+      // For non-live completed cards: sync status icon text/color and run-failed class
+      if (!liveSources[run.id] && run.status !== 'running') {
+        const iconEl = document.getElementById(`status-icon-${run.id}`);
+        if (iconEl) {
+          const isFailed = run.status !== 'success';
+          iconEl.textContent = isFailed ? '✕' : '✓';
+          iconEl.style.color = isFailed ? 'var(--red)' : 'var(--green)';
+          if (isFailed) {
+            existing.classList.add('run-failed');
+          } else {
+            existing.classList.remove('run-failed');
+          }
+        }
+      }
+
+      // Start SSE if run is still running, no source exists, and not in failedSources
+      if (run.status === 'running' && !liveSources[run.id] && !failedSources.has(run.id)) {
+        openLiveLog(run.id);
+      }
+    } else {
+      // New card — insert at top
+      list.insertAdjacentHTML('afterbegin', renderRunCard(run));
+      if (run.status === 'running') {
+        openLiveLog(run.id);
+      }
+    }
+  });
 }
 
 async function clearActivity() {
   if (!confirm('Clear all activity history?')) return;
   await api('DELETE', '/api/runs');
   document.getElementById('runs-list').innerHTML = '<div class="empty">No activity yet.</div>';
-}
-
-function renderRuns(runs) {
-  const container = document.getElementById('runs-list');
-  if (!runs.length) {
-    container.innerHTML = '<div class="empty">No activity yet.</div>';
-    return;
-  }
-  container.innerHTML = runs.map(renderRunCard).join('');
 }
 
 function renderRunCard(run) {

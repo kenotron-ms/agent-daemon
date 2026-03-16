@@ -265,14 +265,113 @@ class TestToggleRunLogRemoved:
 def _extract_running_branch(js_text):
     """
     Try to extract the 'running' branch of renderRunCard.
-    Returns the substring between 'run.status === .running.' and the first
-    occurrence of 'run-card run-failed' or the end of the if block.
+    Finds renderRunCard first, then looks for the status === 'running' check
+    within that function, returning up to 800 chars from that point.
     """
-    m = re.search(r"status\s*===\s*['\"]running['\"]", js_text)
+    # Find renderRunCard function start first
+    func_match = re.search(r'function\s+renderRunCard\s*\(', js_text)
+    if not func_match:
+        return None
+    func_start = func_match.start()
+    # Search for status === 'running' only within renderRunCard's body
+    m = re.search(r"status\s*===\s*['\"]running['\"]", js_text[func_start:])
     if not m:
         return None
-    # Return a generous slice after the status check
-    start = m.start()
-    # Find closing of the if block — look for the else/next return or 200 chars
+    start = func_start + m.start()
     snippet = js_text[start:start + 800]
     return snippet
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Incremental loadRuns — renderRuns removed, new incremental logic
+# ---------------------------------------------------------------------------
+
+class TestRenderRunsRemoved:
+    def test_renderRuns_function_removed(self, js_text):
+        """Old renderRuns function must be removed (replaced by incremental loadRuns)."""
+        assert not re.search(r'function\s+renderRuns\s*\(', js_text), \
+            "renderRuns function must be removed — incremental loadRuns replaces it"
+
+    def test_renderRuns_not_called(self, js_text):
+        """renderRuns must not be called anywhere in the code."""
+        assert 'renderRuns(' not in js_text, \
+            "renderRuns() must not be called — new loadRuns handles rendering incrementally"
+
+
+class TestLiveSourcesState:
+    def test_liveSources_declared(self, js_text):
+        """liveSources module-level object must be declared before loadRuns."""
+        assert re.search(r'const\s+liveSources\s*=\s*\{\}', js_text), \
+            "liveSources = {} must be declared as module-level state before loadRuns"
+
+    def test_failedSources_declared(self, js_text):
+        """failedSources module-level Set must be declared before loadRuns."""
+        assert re.search(r'const\s+failedSources\s*=\s*new\s+Set\s*\(\s*\)', js_text), \
+            "failedSources = new Set() must be declared as module-level state before loadRuns"
+
+    def test_liveSources_before_loadRuns(self, js_text):
+        """liveSources declaration must appear before async function loadRuns."""
+        live_match = re.search(r'const\s+liveSources\s*=\s*\{\}', js_text)
+        load_match = re.search(r'async\s+function\s+loadRuns\s*\(', js_text)
+        assert live_match and load_match, \
+            "Both liveSources and loadRuns must exist"
+        assert live_match.start() < load_match.start(), \
+            "liveSources must be declared before async function loadRuns"
+
+
+class TestIncrementalLoadRuns:
+    def test_loadRuns_uses_insertAdjacentHTML(self, js_text):
+        """loadRuns must use insertAdjacentHTML('afterbegin') instead of innerHTML."""
+        assert "insertAdjacentHTML('afterbegin'" in js_text or \
+               'insertAdjacentHTML("afterbegin"' in js_text, \
+            "loadRuns must use insertAdjacentHTML('afterbegin', ...) for incremental card insertion"
+
+    def test_loadRuns_iterates_reverse(self, js_text):
+        """loadRuns must iterate runs in reverse (oldest-first) via [...runs].reverse()."""
+        assert re.search(r'\[\s*\.\.\.\s*runs\s*\]\s*\.reverse\s*\(\s*\)', js_text), \
+            "loadRuns must iterate [...runs].reverse() to insert oldest first via afterbegin"
+
+    def test_loadRuns_checks_existing_card_by_id(self, js_text):
+        """loadRuns must look up existing cards by id 'run-${run.id}'."""
+        assert re.search(r"getElementById\s*\(\s*[`'\"]run-\$\{run\.id\}", js_text), \
+            "loadRuns must check for existing card via getElementById('run-${run.id}')"
+
+    def test_loadRuns_updates_run_time_element(self, js_text):
+        """loadRuns must update the run-time-${run.id} element in-place."""
+        assert re.search(r"getElementById\s*\(\s*[`'\"]run-time-\$\{run\.id\}", js_text), \
+            "loadRuns must update run-time element via getElementById('run-time-${run.id}')"
+
+    def test_loadRuns_calls_openLiveLog(self, js_text):
+        """loadRuns must call openLiveLog(run.id) for running runs."""
+        assert re.search(r'openLiveLog\s*\(\s*run\.id\s*\)', js_text), \
+            "loadRuns must call openLiveLog(run.id) for running runs"
+
+    def test_loadRuns_removes_stale_cards(self, js_text):
+        """loadRuns must remove cards for runs no longer in API response."""
+        assert re.search(r'\.remove\s*\(\s*\)', js_text), \
+            "loadRuns must call .remove() to remove stale run cards"
+
+    def test_loadRuns_closes_stale_sse(self, js_text):
+        """loadRuns must close SSE connections for stale runs before removing the card."""
+        assert re.search(r'liveSources\s*\[.*\]\s*\.close\s*\(\s*\)', js_text), \
+            "loadRuns must call liveSources[runId].close() when removing stale cards"
+
+    def test_loadRuns_empty_state_conditional(self, js_text):
+        """loadRuns must only show empty state if no .run-card exists in list."""
+        assert re.search(r'querySelector\s*\(\s*[`\'"]\.run-card[`\'"]', js_text), \
+            "loadRuns must use querySelector('.run-card') to avoid overwriting cards with empty state"
+
+    def test_loadRuns_removes_empty_placeholder(self, js_text):
+        """loadRuns must remove stale .empty placeholder when runs appear."""
+        assert re.search(r'querySelector\s*\(\s*[`\'"]\.empty[`\'"]', js_text), \
+            "loadRuns must remove stale .empty placeholder via querySelector('.empty')"
+
+    def test_loadRuns_checks_failedSources(self, js_text):
+        """loadRuns must skip reconnecting to runs in failedSources."""
+        assert re.search(r'failedSources\s*\.has\s*\(', js_text), \
+            "loadRuns must check failedSources.has(run.id) before reconnecting via openLiveLog"
+
+    def test_loadRuns_syncs_status_icon(self, js_text):
+        """loadRuns must sync status icon for non-live completed cards."""
+        assert re.search(r"getElementById\s*\(\s*[`'\"]status-icon-\$\{run\.id\}", js_text), \
+            "loadRuns must update status icon via getElementById('status-icon-${run.id}')"
