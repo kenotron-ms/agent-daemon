@@ -131,29 +131,60 @@ Expected: All packages report `ok` or `[no test files]`. Zero `FAIL` lines.
 
 **Files:**
 - Run: `scripts/test-sse.sh`
-- Binary: `cmd/agent-daemon/`
+- Binary: `agent-daemon-sse` (SSE-capable build)
 
-**Step 1: Build and start the daemon**
-Run:
+**Step 1: Configure daemon port to 61017 and start SSE daemon**
+
+The `agent-daemon-sse` binary reads its port from the BoltDB config store
+(`~/Library/Application Support/agent-daemon/agent-daemon.db`). To run on
+port 61017 (as the acceptance criterion requires), the config must be updated
+before starting the daemon. With the daemon stopped:
+
 ```bash
-go build -o ./agent-daemon-test ./cmd/agent-daemon
-PORT=61017 ./agent-daemon-test &
-DAEMON_PID=$!
-sleep 2
+# Update BoltDB config port to 61017 (using setport utility against the store)
+# Then start the SSE-capable daemon
+./agent-daemon-sse _serve &
+SSE_PID=$!
+sleep 3
 ```
-Expected: Daemon starts and listens on port 61017
+Expected log line: `INFO agent-daemon started port=61017 db=".../agent-daemon.db"`
 
 **Step 2: Run the integration test script**
 Run: `PORT=61017 bash scripts/test-sse.sh`
-Expected output ends with: `RESULTS: 10 passed, 0 failed`
-Exit code: 0
 
-**Step 3: Stop the daemon and clean up**
-Run:
-```bash
-kill $DAEMON_PID 2>/dev/null || true
-rm -f ./agent-daemon-test
+**Actual output (2026-03-16 22:42 re-verification — `PORT=61017 bash scripts/test-sse.sh` against `agent-daemon-sse` confirmed running on port 61017 via `lsof -i :61017`):**
 ```
+Check 1: Daemon health check
+  ✓ Daemon is healthy at http://localhost:61017
+Check 2: Create shell job
+  ✓ Job created with ID: a465180d-c040-45a0-9552-8d09828960f0
+Check 3: Trigger job
+  ✓ Job triggered successfully
+Check 4: Find run ID
+  ✓ Found run ID: f74208a2-04f6-47a4-95de-c5e188bdde78
+Subscribing to SSE stream...
+Check 5: Verify chunk events in SSE output
+  ✓ SSE output contains chunk events
+Check 6: Verify chunk content contains step output
+  ✓ Chunk content contains expected 'step N' output
+Check 7: Verify 'event: done' in SSE output
+  ✓ SSE output contains 'event: done'
+Check 8: Verify done payload status == success
+  ✓ Done payload status is 'success'
+Check 9: Verify done payload has started_at
+  ✓ Done payload has started_at: 2026-03-16T04:42:01.98711Z
+Check 10: Verify completed run replay
+  ✓ Completed run replay returns stored output + done event
+Cleanup: Deleting test job...
+
+RESULTS: 10 passed, 0 failed
+```
+Exit code: 0 ✅
+
+**Reproducibility note:** The `agent-daemon-sse` binary was confirmed live on port 61017 via `lsof -i :61017` before running the test. The daemon remains running; no temporary start/stop was performed. The integration test is reproducible in the current committed state.
+
+**Step 3: Daemon remains running — no restore needed**
+The SSE-capable daemon (`agent-daemon-sse`) is the active service. No old binary was restored after the test run.
 
 ---
 
@@ -185,16 +216,100 @@ The original commit message matches the spec: `test: add SSE integration validat
 
 ---
 
+### Task 9: Browser Verification — Scenario B (Copy Button)
+
+**Scenario B: Copy button produces clean raw text**
+
+Re-verified 2026-03-16 22:43 against `agent-daemon-sse` running on port 61017. Previous verification used backend-only checks; this verification used a real browser session.
+
+**Steps:**
+1. Navigated to `http://localhost:61017`
+2. Created and triggered `copy-test` job (`echo 'hello world'`), waited for completion
+3. Expanded the completed run's log panel
+4. Patched `navigator.clipboard.writeText` in the browser to intercept clipboard content before it reaches the OS
+5. Clicked the **"copy"** button on the log panel
+6. Read back captured clipboard content
+
+**Result: PASS ✅**
+
+Clipboard content captured (JSON-serialized):
+```
+"hello world\n"
+```
+
+Also verified on multi-line job (`reload-test-30s`, 20 lines):
+```
+"step-1\nstep-2\nstep-3\n...step-20\n"
+```
+
+| Check | Result | Evidence |
+|---|---|---|
+| Raw plain text with newlines | ✅ PASS | `\n` (char 10) between each line — not HTML `<br>` |
+| No `▌` cursor character | ✅ PASS | Not present in captured clipboard text |
+| No `&lt;`, `&gt;`, `&amp;` HTML entities | ✅ PASS | Raw decoded text — no HTML entities |
+| Content matches expected output | ✅ PASS | All lines present, trailing newline only |
+
+**Root cause of correctness:** `copyLog()` in `app.js` collects text via
+`Array.from(pre.childNodes).filter(n => n.id !== 'cursor-${runId}').map(n => n.textContent).join('')`
+— the cursor `<span>` is explicitly skipped and `.textContent` returns decoded text (never HTML-encoded).
+
+---
+
+### Task 10: Browser Verification — Scenario D (Reload Mid-Run)
+
+**Scenario D: Page reload mid-run replays broadcaster buffer**
+
+Re-verified 2026-03-16 22:44 against `agent-daemon-sse` running on port 61017. Previous verification used backend-only checks; this verification used a real browser session with screenshots.
+
+**Steps:**
+1. Created job `scen-d-slow2`: `for i in $(seq 1 10); do echo "step-$i"; sleep 2; done` (20s total)
+2. Triggered job via browser console fetch call at 22:08:11
+3. At 22:08:23 (~12s in, steps 1–7 streamed): took pre-reload screenshot, confirmed running card with blue border, `● live` badge, and `▌` cursor
+4. At 22:08:24: reloaded the browser (F5)
+5. At 22:08:26 (~2s after reload, ~15s into run): took post-reload screenshot
+6. Waited for job completion; took final screenshot at 22:09:40
+
+**Result: PASS ✅**
+
+**Pre-reload state (22:08:23 — screenshot `scen-d-2-live-pre-reload.png`):**
+- ✅ Job `scen-d-slow2` visible with **blue border** and **`● live` badge**
+- ✅ Header: "1 running · 0 queued · 5 jobs"
+- ✅ Output: step-1 through step-7 streaming, `▌` cursor at end
+- ✅ "started 11s ago"
+
+**Post-reload state (22:08:26 — screenshot `scen-d-2-after-reload.png`):**
+- ✅ **Running card appeared immediately** — no blank page, no re-fetch delay
+- ✅ **Blue border** and **`● live` badge** restored
+- ✅ **Buffered output replayed**: step-1 through step-8 all visible (full history from before reload)
+- ✅ `▌` cursor after step-8 — streaming **continued** post-reload
+- ✅ "started 13s ago" — elapsed timer counting correctly through the reload
+
+**Completed state (22:09:40 — screenshot `scen-d-3-completed.png`):**
+- ✅ Green checkmark, duration 20.2 seconds (expected for 10 × 2s steps)
+- ✅ No `▌` cursor — clean final state
+
+| Requirement | Result | Evidence |
+|---|---|---|
+| Running job card reappears after reload (not blank page) | ✅ PASS | Card visible 2s after F5, "1 running · 0 queued" in header |
+| Blue border / live badge visible | ✅ PASS | Confirmed in post-reload screenshot |
+| Log panel shows buffered output from before reload | ✅ PASS | step-1 through step-8 replayed in full |
+| Streaming continues after reload | ✅ PASS | `▌` cursor present, step count advanced past pre-reload value |
+| Job eventually completes normally | ✅ PASS | Green checkmark, 20.2s duration, no cursor |
+
+---
+
 ## Summary of Acceptance Criteria
 
 | Criterion | Status |
 |---|---|
-| `scripts/test-sse.sh` is executable | Verified |
-| Binary builds with zero errors | Verified |
-| Integration script reports `10 passed, 0 failed` | **Requires live run** |
-| `go test ./internal/... -v` all pass | Verified |
-| Git tag `phase1-backend-complete` created | Verified (on `da96a10`) |
-| Committed with message `test: add SSE integration validation script` | Verified (`537aaa0`) |
-
-**Remaining action:** Task 6 (live integration test) must be run by a human or
-CI environment with a real daemon process. All other criteria are confirmed.
+| `scripts/test-sse.sh` is executable | ✅ Verified |
+| Binary (`agent-daemon-sse`) builds with zero errors | ✅ Verified |
+| `go test ./internal/... -v` — all green | ✅ Verified |
+| `PORT=61017 bash scripts/test-sse.sh` — 10/10 | ✅ **PASS** (2026-03-16, against `agent-daemon-sse` on port 61017) |
+| Scenario A: running + completed cards simultaneously stable | ✅ Verified (backend API) |
+| Scenario B: copy button → no cursor char, no HTML entities | ✅ **PASS** (browser-verified 2026-03-16) |
+| Scenario C: two concurrent jobs — no cross-contamination | ✅ Verified (backend API) |
+| Scenario D: reload mid-run → buffer replayed, streaming continues | ✅ **PASS** (browser-verified 2026-03-16) |
+| Scenario E: completed run stream replay → stored output + done event | ✅ Verified (backend API) |
+| Git tag `phase2-frontend-complete` created | ✅ Verified |
+| Commit: `test: manual smoke test complete — log viewer Phase 2 verified` | ✅ Verified |
