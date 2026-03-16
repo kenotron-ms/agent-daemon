@@ -6,38 +6,49 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/ms/agent-daemon/internal/types"
 )
 
-// amplifierCmd builds an exec.Cmd for the amplifier binary, augmenting PATH
-// so the binary is found even when the daemon runs under launchd (which
-// inherits a minimal PATH that omits ~/.local/bin and /usr/local/bin).
-func amplifierCmd(ctx context.Context, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "amplifier", args...)
-
-	// Prepend common user-binary locations to whatever PATH the daemon has.
-	home, _ := os.UserHomeDir()
-	extra := strings.Join([]string{
-		home + "/.local/bin",
-		"/usr/local/bin",
-		"/opt/homebrew/bin",
-	}, ":")
-	current := os.Getenv("PATH")
-	if current != "" {
-		extra += ":" + current
+// resolveAmplifierBinary returns the absolute path to the amplifier binary.
+// exec.Command resolves the binary via LookPath at creation time using the
+// daemon's inherited PATH — which under launchd omits ~/.local/bin and other
+// user locations. We search those directories explicitly as a fallback.
+func resolveAmplifierBinary() (string, error) {
+	// Fast path: already on the daemon's PATH.
+	if p, err := exec.LookPath("amplifier"); err == nil {
+		return p, nil
 	}
-	env := os.Environ()
-	for i, e := range env {
-		if strings.HasPrefix(e, "PATH=") {
-			env[i] = "PATH=" + extra
-			cmd.Env = env
-			return cmd
+
+	// Slow path: check common user-install locations.
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(home, ".local", "bin", "amplifier"),
+		"/usr/local/bin/amplifier",
+		"/opt/homebrew/bin/amplifier",
+	}
+	for _, c := range candidates {
+		if info, err := os.Stat(c); err == nil && !info.IsDir() {
+			return c, nil
 		}
 	}
-	cmd.Env = append(env, "PATH="+extra)
-	return cmd
+	return "", fmt.Errorf("amplifier binary not found in PATH or common locations (%s)",
+		strings.Join(candidates, ", "))
+}
+
+// amplifierCmd builds an exec.Cmd for the amplifier binary, resolving its
+// absolute path so the command works even when the daemon's inherited PATH
+// (e.g. under launchd) does not include the user's bin directories.
+func amplifierCmd(ctx context.Context, args ...string) *exec.Cmd {
+	bin, err := resolveAmplifierBinary()
+	if err != nil {
+		// Return a cmd that will fail with a clear message on Start().
+		cmd := exec.CommandContext(ctx, "amplifier", args...)
+		return cmd
+	}
+	return exec.CommandContext(ctx, bin, args...)
 }
 
 func execAmplifier(ctx context.Context, job *types.Job, b *Broadcaster, runID string) (output string, exitCode int, err error) {
