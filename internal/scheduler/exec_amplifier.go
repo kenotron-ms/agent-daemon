@@ -1,7 +1,6 @@
 package scheduler
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,13 +17,13 @@ func execAmplifier(ctx context.Context, job *types.Job, b *Broadcaster, runID st
 	}
 
 	if cfg.RecipePath != "" {
-		return execAmplifierRecipe(ctx, job, cfg)
+		return execAmplifierRecipe(ctx, job, cfg, b, runID)
 	}
-	return execAmplifierPrompt(ctx, job, cfg)
+	return execAmplifierPrompt(ctx, job, cfg, b, runID)
 }
 
 // execAmplifierPrompt runs one or more prompt steps via `amplifier run`.
-func execAmplifierPrompt(ctx context.Context, job *types.Job, cfg *types.AmplifierConfig) (output string, exitCode int, err error) {
+func execAmplifierPrompt(ctx context.Context, job *types.Job, cfg *types.AmplifierConfig, b *Broadcaster, runID string) (output string, exitCode int, err error) {
 	if cfg.Prompt == "" {
 		return "", -1, fmt.Errorf("amplifier executor requires a prompt or recipe_path")
 	}
@@ -40,28 +39,20 @@ func execAmplifierPrompt(ctx context.Context, job *types.Job, cfg *types.Amplifi
 			cmd.Dir = job.CWD
 		}
 
-		var buf bytes.Buffer
-		cmd.Stdout = &buf
-		cmd.Stderr = &buf
-
-		runErr := cmd.Run()
-		stepOut := buf.String()
-
 		if i > 0 {
-			allOutput.WriteString(fmt.Sprintf("\n--- step %d ---\n", i+1))
+			sep := fmt.Sprintf("\n--- step %d ---\n", i+1)
+			b.Write(runID, sep)
+			allOutput.WriteString(sep)
 		}
+
+		stepOut, code, runErr := streamCommand(cmd, b, runID)
 		allOutput.WriteString(stepOut)
 
 		if runErr != nil {
-			if cmd.ProcessState != nil {
-				exitCode = cmd.ProcessState.ExitCode()
-			} else {
-				exitCode = -1
-			}
-			return allOutput.String(), exitCode, runErr
+			return allOutput.String(), code, runErr
 		}
 
-		// Extract session_id from JSON output to chain steps
+		// Extract session_id from JSON output to chain steps.
 		if sessionID == "" {
 			if id := extractAmplifierSessionID(stepOut); id != "" {
 				sessionID = id
@@ -73,11 +64,11 @@ func execAmplifierPrompt(ctx context.Context, job *types.Job, cfg *types.Amplifi
 }
 
 // execAmplifierRecipe runs a recipe via `amplifier tool invoke recipe_execute`.
-func execAmplifierRecipe(ctx context.Context, job *types.Job, cfg *types.AmplifierConfig) (output string, exitCode int, err error) {
+func execAmplifierRecipe(ctx context.Context, job *types.Job, cfg *types.AmplifierConfig, b *Broadcaster, runID string) (output string, exitCode int, err error) {
 	contextJSON := "{}"
 	if len(cfg.Context) > 0 {
-		b, _ := json.Marshal(cfg.Context)
-		contextJSON = string(b)
+		bs, _ := json.Marshal(cfg.Context)
+		contextJSON = string(bs)
 	}
 
 	args := []string{
@@ -94,18 +85,7 @@ func execAmplifierRecipe(ctx context.Context, job *types.Job, cfg *types.Amplifi
 		cmd.Dir = job.CWD
 	}
 
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-
-	err = cmd.Run()
-	output = buf.String()
-	if cmd.ProcessState != nil {
-		exitCode = cmd.ProcessState.ExitCode()
-	} else if err != nil {
-		exitCode = -1
-	}
-	return
+	return streamCommand(cmd, b, runID)
 }
 
 func buildAmplifierArgs(cfg *types.AmplifierConfig, prompt, sessionID string) []string {
