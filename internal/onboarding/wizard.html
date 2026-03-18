@@ -181,7 +181,7 @@
     <p class="section-sub">Agent Daemon needs an API key to run AI-powered jobs. Add at least one.</p>
 
     <div class="field-wrap">
-      <div class="field-label">Anthropic API Key</div>
+      <label class="field-label" for="anthropic-key">Anthropic API Key</label>
       <input class="field-input" id="anthropic-key" type="password"
              placeholder="sk-ant-..." autocomplete="off"
              value="{{ANTHROPIC_KEY}}">
@@ -190,7 +190,7 @@
     </div>
 
     <div class="field-wrap">
-      <div class="field-label">OpenAI API Key <span class="field-optional">(Optional)</span></div>
+      <label class="field-label" for="openai-key">OpenAI API Key <span class="field-optional">(Optional)</span></label>
       <input class="field-input" id="openai-key" type="password"
              placeholder="sk-..." autocomplete="off"
              value="{{OPENAI_KEY}}">
@@ -261,6 +261,7 @@
   }
 
   function updateContinueState() {
+    if (currentStep !== 2) return;
     var key = document.getElementById("anthropic-key").value.trim();
     document.getElementById("btn-next").disabled = (key === "");
     document.getElementById("ant-check").className = "field-check" + (key ? " show" : "");
@@ -291,6 +292,10 @@
   }
 
   function goBack() {
+    if (currentStep === 2) {
+      document.getElementById("anthropic-key").classList.remove("error");
+      document.getElementById("ant-error").classList.remove("show");
+    }
     if (currentStep > 1) { currentStep--; updateStepUI(); }
   }
 
@@ -334,7 +339,6 @@
   document.getElementById("openai-key").addEventListener("input", updateContinueState);
 
   updateStepUI();
-  updateContinueState();
 </script>
 </body>
 </html>
