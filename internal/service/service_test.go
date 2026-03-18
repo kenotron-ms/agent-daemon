@@ -6,6 +6,19 @@ import (
 	"testing"
 )
 
+func TestBuildServiceConfig_ExecutableIsResolved(t *testing.T) {
+	cfg := BuildServiceConfig(LevelUser)
+	// The executable path in the config must equal its own resolved form.
+	// If EvalSymlinks is working, the path is already canonical.
+	resolved, err := filepath.EvalSymlinks(cfg.Executable)
+	if err != nil {
+		t.Skipf("could not resolve path %s: %v", cfg.Executable, err)
+	}
+	if cfg.Executable != resolved {
+		t.Errorf("BuildServiceConfig returned unresolved path\n  got:  %s\n  want: %s", cfg.Executable, resolved)
+	}
+}
+
 func TestBuildServiceConfig_ResolvesSymlink(t *testing.T) {
 	// Create a real file and a symlink to it
 	dir := t.TempDir()
