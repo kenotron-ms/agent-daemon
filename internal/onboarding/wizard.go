@@ -3,6 +3,7 @@ package onboarding
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/ms/agent-daemon/internal/config"
 	"github.com/ms/agent-daemon/internal/store"
@@ -14,8 +15,8 @@ type state struct {
 	st           store.Store
 	anthropicKey string
 	openAIKey    string
-	fdaGranted   bool
-	closed       bool
+	fdaGranted   atomic.Bool // accessed from multiple goroutines; use Load/Store
+	closed       atomic.Bool // accessed from multiple goroutines; use Load/Store
 	onDone       func()
 }
 
@@ -62,7 +63,7 @@ func Show(st store.Store, onDone func()) {
 	if cfg != nil {
 		s.anthropicKey = cfg.AnthropicKey
 		s.openAIKey = cfg.OpenAIKey
-		s.fdaGranted = CheckFDA()
+		s.fdaGranted.Store(CheckFDA())
 	}
 	gState = s
 	showImpl(s)

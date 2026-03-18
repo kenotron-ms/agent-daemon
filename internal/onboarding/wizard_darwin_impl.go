@@ -43,10 +43,10 @@ static id                    _gActObs   = nil;
 // ── C API ────────────────────────────────────────────────────────────────────
 
 void wizard_show(const char *htmlCStr) {
+    NSString *html = [NSString stringWithUTF8String:htmlCStr]; // copy BEFORE async — Go frees the C string on return
     dispatch_async(dispatch_get_main_queue(), ^{
         if (_gPanel) { [_gPanel makeKeyAndOrderFront:nil]; return; }
-
-        NSString *html = [NSString stringWithUTF8String:htmlCStr];
+        // use `html` — ARC retains it across the async boundary
 
         WKWebViewConfiguration *cfg = [WKWebViewConfiguration new];
         _gDelegate = [_AgentWizardDelegate new];
@@ -76,9 +76,10 @@ void wizard_show(const char *htmlCStr) {
 }
 
 void wizard_eval_js(const char *jsCStr) {
+    NSString *js = [NSString stringWithUTF8String:jsCStr]; // copy BEFORE async — Go frees the C string on return
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!_gWebView) return;
-        NSString *js = [NSString stringWithUTF8String:jsCStr];
+        // use `js` — ARC retains it across the async boundary
         [_gWebView evaluateJavaScript:js completionHandler:nil];
     });
 }
@@ -99,15 +100,18 @@ void wizard_close(void) {
 // wizard_observe_activation registers an observer for NSApplicationDidBecomeActiveNotification.
 // Uses NSNotificationCenter (not NSApplicationDelegate) to coexist safely with
 // fyne.io/systray's existing delegate.
+// Dispatched to the main queue to avoid a data race on _gActObs.
 void wizard_observe_activation(void) {
-    if (_gActObs) return;
-    _gActObs = [[NSNotificationCenter defaultCenter]
-        addObserverForName:NSApplicationDidBecomeActiveNotification
-        object:nil
-        queue:nil
-        usingBlock:^(NSNotification *n) {
-            wizardGoActivation();
-        }];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (_gActObs) return;
+        _gActObs = [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSApplicationDidBecomeActiveNotification
+            object:nil
+            queue:nil
+            usingBlock:^(NSNotification *n) {
+                wizardGoActivation();
+            }];
+    });
 }
 */
 import "C"
@@ -140,7 +144,7 @@ func showImpl(s *state) {
 	defer C.free(unsafe.Pointer(cHTML))
 	C.wizard_show(cHTML)
 	C.wizard_observe_activation()
-	if !s.fdaGranted {
+	if !s.fdaGranted.Load() {
 		go pollFDA(s)
 	}
 }
@@ -153,7 +157,7 @@ func showImpl(s *state) {
 func buildHTML(s *state) string {
 	pngDataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(fdaGuidePNG)
 	fdaVal := "false"
-	if s.fdaGranted {
+	if s.fdaGranted.Load() {
 		fdaVal = "true"
 	}
 	// HTML-escape keys: they are substituted into value="" attribute context.
@@ -202,11 +206,11 @@ func pollFDA(s *state) {
 
 	for {
 		time.Sleep(1 * time.Second)
-		if s.closed || s.fdaGranted {
+		if s.closed.Load() || s.fdaGranted.Load() {
 			return
 		}
 		if CheckFDA() {
-			s.fdaGranted = true
+			s.fdaGranted.Store(true)
 			pushJS(`window.dispatchEvent(new CustomEvent('fdaGranted'))`)
 			return
 		}
