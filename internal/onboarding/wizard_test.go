@@ -32,11 +32,13 @@ func TestNeedsOnboarding_EmptyHomeDir(t *testing.T) {
 	}
 }
 
-func TestNeedsOnboarding_AllSet_ChecksNoFDA(t *testing.T) {
+func TestNeedsOnboarding_AllSet_FDAFails(t *testing.T) {
+	// On non-darwin/non-cgo builds, CheckFDA() stub always returns false.
+	// NeedsOnboarding must therefore return true (FDA check fails).
 	cfg := config.Defaults()
 	cfg.AnthropicKey = "sk-ant-test"
 	cfg.UserContext = &config.UserContext{HomeDir: "/Users/test", Shell: "/bin/zsh"}
-	// On non-darwin/non-cgo builds, CheckFDA() returns false → NeedsOnboarding true.
-	// On darwin+cgo builds with FDA, it may return false. Either way: no panic.
-	_ = NeedsOnboarding(cfg)
+	if !NeedsOnboarding(cfg) {
+		t.Error("expected NeedsOnboarding=true when CheckFDA returns false")
+	}
 }

@@ -2,6 +2,7 @@ package onboarding
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/ms/agent-daemon/internal/config"
 	"github.com/ms/agent-daemon/internal/store"
@@ -45,7 +46,15 @@ func NeedsOnboarding(cfg *config.Config) bool {
 // completes successfully (all steps done, service installed).
 // No-op on non-macOS or non-CGo builds (see wizard_other.go).
 func Show(st store.Store, onDone func()) {
-	cfg, _ := st.GetConfig(context.Background())
+	// Guard: don't open a second wizard if one is already active.
+	if gState != nil {
+		slog.Warn("onboarding: wizard already open, ignoring Show() call")
+		return
+	}
+	cfg, err := st.GetConfig(context.Background())
+	if err != nil {
+		slog.Warn("onboarding: failed to read config from store", "err", err)
+	}
 	s := &state{
 		st:     st,
 		onDone: onDone,
