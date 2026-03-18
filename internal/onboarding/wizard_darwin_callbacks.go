@@ -12,13 +12,16 @@ extern void wizard_close(void);
 import "C"
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/kardianos/service"
 	"github.com/ms/agent-daemon/internal/config"
@@ -78,6 +81,20 @@ func wizardGoActivation() {
 // OnboardingComplete, and closes the wizard. Service installation is handled
 // separately by doInstallService (triggered from the Install step).
 func handleDone(s *state) {
+	s.mu.Lock()
+	anthropicKey := s.anthropicKey
+	openAIKey := s.openAIKey
+	s.mu.Unlock()
+
+	// Try API path first — avoids DB lock contention when daemon is already running.
+	// Falls back to direct DB access for fresh installs where no daemon is running yet.
+	if trySaveKeysViaAPI(anthropicKey, openAIKey) {
+		slog.Info("onboarding: saved keys via daemon API")
+		closeWizard(s)
+		return
+	}
+
+	// Daemon not running — safe to open DB directly.
 	st, err := store.Open(platform.DBPath())
 	if err != nil {
 		pushInstallError("Failed to open database: " + err.Error())
@@ -91,11 +108,9 @@ func handleDone(s *state) {
 		return
 	}
 
-	// Snapshot API keys under the mutex and persist them.
-	s.mu.Lock()
-	cfg.AnthropicKey = s.anthropicKey
-	cfg.OpenAIKey = s.openAIKey
-	s.mu.Unlock()
+	// Persist the API keys snapshotted above.
+	cfg.AnthropicKey = anthropicKey
+	cfg.OpenAIKey = openAIKey
 
 	// Capture user context (HomeDir, Shell, UID) — always refresh on completion.
 	if uc := config.CaptureUserContext(); uc != nil {
@@ -111,6 +126,35 @@ func handleDone(s *state) {
 	}
 
 	closeWizard(s)
+}
+
+// trySaveKeysViaAPI attempts to persist API keys through the running daemon's
+// HTTP endpoint. Returns true if the daemon is reachable and responds 2xx.
+// Using the HTTP path avoids BoltDB exclusive-lock contention: the daemon owns
+// the write lock while it is running, so opening the DB file directly from the
+// tray/wizard process will time out.
+func trySaveKeysViaAPI(anthropicKey, openAIKey string) bool {
+	body, err := json.Marshal(map[string]string{
+		"anthropicKey": anthropicKey,
+		"openAIKey":    openAIKey,
+	})
+	if err != nil {
+		return false
+	}
+	url := fmt.Sprintf("http://localhost:%d/api/settings", config.DefaultPort)
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		// Daemon not reachable — this is expected on fresh installs.
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
 // doInstallService handles the Install Service wizard step.
