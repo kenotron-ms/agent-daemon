@@ -3,6 +3,7 @@ package onboarding
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 
 	"github.com/ms/agent-daemon/internal/config"
@@ -12,6 +13,7 @@ import (
 // state holds wizard session data shared between the pure-Go state machine and
 // the platform-specific CGo UI callbacks (wizard_darwin_callbacks.go).
 type state struct {
+	mu           sync.Mutex  // guards anthropicKey and openAIKey
 	st           store.Store
 	anthropicKey string
 	openAIKey    string
@@ -22,7 +24,7 @@ type state struct {
 
 // gState is the active wizard session. Set by Show(), read by CGo callbacks.
 // Defined here (no build tag) so all platform files can access it.
-var gState *state
+var gState atomic.Pointer[state]
 
 // NeedsOnboarding returns true if the first-run wizard should be shown.
 //
@@ -48,7 +50,7 @@ func NeedsOnboarding(cfg *config.Config) bool {
 // No-op on non-macOS or non-CGo builds (see wizard_other.go).
 func Show(st store.Store, onDone func()) {
 	// Guard: don't open a second wizard if one is already active.
-	if gState != nil {
+	if gState.Load() != nil {
 		slog.Warn("onboarding: wizard already open, ignoring Show() call")
 		return
 	}
@@ -65,6 +67,6 @@ func Show(st store.Store, onDone func()) {
 		s.openAIKey = cfg.OpenAIKey
 		s.fdaGranted.Store(CheckFDA())
 	}
-	gState = s
+	gState.Store(s)
 	showImpl(s)
 }

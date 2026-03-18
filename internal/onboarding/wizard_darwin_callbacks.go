@@ -13,13 +13,12 @@ import "C"
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"unsafe"
 
 	"github.com/kardianos/service"
 	"github.com/ms/agent-daemon/internal/config"
@@ -35,19 +34,24 @@ import (
 func wizardGoMessage(cAction *C.char, cPayload *C.char) {
 	action := C.GoString(cAction)
 	payload := C.GoString(cPayload)
-	if gState == nil {
+	s := gState.Load()
+	if s == nil {
 		return
 	}
 	switch action {
 	case "setAnthropicKey":
-		gState.anthropicKey = payload
+		s.mu.Lock()
+		s.anthropicKey = payload
+		s.mu.Unlock()
 	case "setOpenAIKey":
-		gState.openAIKey = payload
+		s.mu.Lock()
+		s.openAIKey = payload
+		s.mu.Unlock()
 	case "openSettings":
 		openSystemSettings()
-		go pollFDA(gState)
+		go pollFDA(s)
 	case "done":
-		go handleDone(gState)
+		go handleDone(s)
 	}
 }
 
@@ -56,11 +60,12 @@ func wizardGoMessage(cAction *C.char, cPayload *C.char) {
 //
 //export wizardGoActivation
 func wizardGoActivation() {
-	if gState == nil || gState.fdaGranted.Load() {
+	s := gState.Load()
+	if s == nil || s.fdaGranted.Load() {
 		return
 	}
 	if CheckFDA() {
-		gState.fdaGranted.Store(true)
+		s.fdaGranted.Store(true)
 		pushJS(`window.dispatchEvent(new CustomEvent('fdaGranted'))`)
 	}
 }
@@ -86,9 +91,15 @@ func handleDone(s *state) {
 		return
 	}
 
+	// Snapshot API keys under the mutex
+	s.mu.Lock()
+	anthropicKey := s.anthropicKey
+	openAIKey := s.openAIKey
+	s.mu.Unlock()
+
 	// Save API keys
-	cfg.AnthropicKey = s.anthropicKey
-	cfg.OpenAIKey = s.openAIKey
+	cfg.AnthropicKey = anthropicKey
+	cfg.OpenAIKey = openAIKey
 
 	// Capture user context (HomeDir, Shell, UID)
 	if uc := config.CaptureUserContext(); uc != nil {
@@ -128,9 +139,7 @@ func handleDone(s *state) {
 
 	// Close the wizard
 	s.closed.Store(true)
-	gState = nil
-	cEmpty := C.CString("")
-	defer C.free(unsafe.Pointer(cEmpty))
+	gState.Store(nil)
 	C.wizard_close()
 
 	if s.onDone != nil {
@@ -149,11 +158,18 @@ func openSystemSettings() {
 
 // isServiceInstalled checks whether the LaunchAgent or LaunchDaemon plist exists.
 func isServiceInstalled() bool {
-	home, _ := os.UserHomeDir()
-	if _, err := os.Stat(filepath.Join(home, "Library", "LaunchAgents", "agent-daemon.plist")); err == nil {
-		return true
+	home, err := os.UserHomeDir()
+	if err != nil {
+		slog.Warn("onboarding: cannot determine home dir for plist check", "err", err)
 	}
-	if _, err := os.Stat("/Library/LaunchDaemons/agent-daemon.plist"); err == nil {
+	if home != "" {
+		plistPath := filepath.Join(home, "Library", "LaunchAgents", internalsvc.LaunchAgentPlistName)
+		if _, err := os.Stat(plistPath); err == nil {
+			return true
+		}
+	}
+	systemPath := filepath.Join("/Library", "LaunchDaemons", internalsvc.LaunchAgentPlistName)
+	if _, err := os.Stat(systemPath); err == nil {
 		return true
 	}
 	return false
@@ -161,7 +177,9 @@ func isServiceInstalled() bool {
 
 // pushInstallError sends an installError event to the wizard JS layer.
 func pushInstallError(msg string) {
-	safe := strings.ReplaceAll(msg, `\`, `\\`)
-	safe = strings.ReplaceAll(safe, `"`, `\"`)
-	pushJS(fmt.Sprintf(`window.dispatchEvent(new CustomEvent('installError', {detail: {msg: "%s"}}))`, safe))
+	msgJSON, _ := json.Marshal(msg) // json.Marshal handles all JS-unsafe chars: \n, \r, \0, ", \
+	pushJS(fmt.Sprintf(
+		`window.dispatchEvent(new CustomEvent('installError', {detail: {msg: %s}}))`,
+		string(msgJSON),
+	))
 }
