@@ -14,7 +14,6 @@ import (
 // the platform-specific CGo UI callbacks (wizard_darwin_callbacks.go).
 type state struct {
 	mu           sync.Mutex  // guards anthropicKey and openAIKey
-	st           store.Store
 	anthropicKey string
 	openAIKey    string
 	fdaGranted   atomic.Bool // accessed from multiple goroutines; use Load/Store
@@ -48,6 +47,10 @@ func NeedsOnboarding(cfg *config.Config) bool {
 // Show presents the onboarding wizard. onDone is called when the wizard
 // completes successfully (all steps done, service installed).
 // No-op on non-macOS or non-CGo builds (see wizard_other.go).
+//
+// Note: st is only used here to read the initial config for pre-filling.
+// handleDone() opens its own connection to avoid holding st open for the
+// wizard's lifetime.
 func Show(st store.Store, onDone func()) {
 	// Guard: don't open a second wizard if one is already active.
 	if gState.Load() != nil {
@@ -59,7 +62,6 @@ func Show(st store.Store, onDone func()) {
 		slog.Warn("onboarding: failed to read config from store", "err", err)
 	}
 	s := &state{
-		st:     st,
 		onDone: onDone,
 	}
 	if cfg != nil {

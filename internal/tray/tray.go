@@ -62,9 +62,13 @@ func checkHealth(port int) []healthIssue {
 		issues = append(issues, healthIssue{"Background service not installed", "service"})
 	}
 
-	// Service running check (HTTP 200)
+	// Service running check (HTTP 200); treat connection refused as dead service.
 	url := fmt.Sprintf("http://localhost:%d/api/status", port)
-	if resp, err := http.Get(url); err == nil {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		issues = append(issues, healthIssue{"Service not responding", "service"})
+	} else {
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			issues = append(issues, healthIssue{"Service not responding", "service"})
@@ -77,13 +81,15 @@ func checkHealth(port int) []healthIssue {
 func onReady(port int) {
 	// ── Onboarding check (macOS .app launch only) ─────────────────────────
 	// Shows the first-run wizard if API key, UserContext, or FDA are missing.
-	if ost, err := store.Open(platform.DBPath()); err == nil {
-		if cfg, err := ost.GetConfig(context.Background()); err == nil {
-			if onboarding.NeedsOnboarding(cfg) {
-				onboarding.Show(ost, func() {
-					slog.Info("tray: onboarding complete")
-				})
-			}
+	if ost, err := store.Open(platform.DBPath()); err != nil {
+		slog.Warn("tray: onboarding check: cannot open store", "err", err)
+	} else {
+		if cfg, err := ost.GetConfig(context.Background()); err != nil {
+			slog.Warn("tray: onboarding check: cannot read config", "err", err)
+		} else if onboarding.NeedsOnboarding(cfg) {
+			onboarding.Show(ost, func() {
+				slog.Info("tray: onboarding complete")
+			})
 		}
 		ost.Close()
 	}
@@ -192,6 +198,7 @@ func onReady(port int) {
 				mFixFDA.Hide()
 				mFixService.Hide()
 				for _, iss := range issues {
+					slog.Debug("tray: health issue detected", "msg", iss.msg, "kind", iss.fixKind)
 					switch iss.fixKind {
 					case "apikey":
 						mFixAPIKey.Show()
@@ -252,7 +259,9 @@ func onReady(port int) {
 			openBrowser(fmt.Sprintf("http://localhost:%d/#/settings", port))
 
 		case <-mFixFDA.ClickedCh:
-			if ost, err := store.Open(platform.DBPath()); err == nil {
+			if ost, err := store.Open(platform.DBPath()); err != nil {
+				slog.Warn("tray: mFixFDA: cannot open store", "err", err)
+			} else {
 				onboarding.Show(ost, func() {
 					slog.Info("tray: FDA fix via health indicator complete")
 				})
