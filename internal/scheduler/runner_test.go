@@ -20,7 +20,7 @@ func setupRunnerTest(t *testing.T) (*Runner, *Broadcaster, store.Store) {
 	}
 	t.Cleanup(func() { st.Close() })
 	b := NewBroadcaster()
-	r := NewRunner(st, b)
+	r := NewRunner(st, b, nil)
 	return r, b, st
 }
 

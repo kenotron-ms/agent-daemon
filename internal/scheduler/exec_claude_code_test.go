@@ -30,9 +30,10 @@ func TestExecClaudeCode_MissingConfig(t *testing.T) {
 		},
 	}
 
+	r := &Runner{broadcaster: b}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			output, exitCode, err := execClaudeCode(context.Background(), tc.job, b, runID)
+			output, exitCode, err := r.execClaudeCode(context.Background(), tc.job, runID)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}

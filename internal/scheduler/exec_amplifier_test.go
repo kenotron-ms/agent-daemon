@@ -15,8 +15,9 @@ func TestExecAmplifier_MissingConfig(t *testing.T) {
 	runID := "test-amplifier-missing-config"
 	b.Register(runID)
 
+	r := &Runner{broadcaster: b}
 	job := &types.Job{Amplifier: nil}
-	output, exitCode, err := execAmplifier(context.Background(), job, b, runID)
+	output, exitCode, err := r.execAmplifier(context.Background(), job, runID)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -39,8 +40,9 @@ func TestExecAmplifier_MissingPromptAndRecipe(t *testing.T) {
 	runID := "test-amplifier-missing-prompt"
 	b.Register(runID)
 
+	r := &Runner{broadcaster: b}
 	job := &types.Job{Amplifier: &types.AmplifierConfig{}}
-	output, exitCode, err := execAmplifier(context.Background(), job, b, runID)
+	output, exitCode, err := r.execAmplifier(context.Background(), job, runID)
 
 	if err == nil {
 		t.Fatal("expected error, got nil")

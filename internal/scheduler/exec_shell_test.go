@@ -24,7 +24,8 @@ func TestExecShell_StreamsChunksToBroadcaster(t *testing.T) {
 		Shell: &types.ShellConfig{Command: `echo "line one" && echo "line two"`},
 	}
 
-	output, exitCode, err := execShell(t.Context(), job, b, runID)
+	r := &Runner{broadcaster: b}
+	output, exitCode, err := r.execShell(t.Context(), job, runID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +64,8 @@ func TestExecShell_CapsAccumulatorAt64KB(t *testing.T) {
 		Shell: &types.ShellConfig{Command: `head -c 70000 /dev/zero | tr '\0' 'a'`},
 	}
 
-	output, exitCode, err := execShell(t.Context(), job, b, runID)
+	r := &Runner{broadcaster: b}
+	output, exitCode, err := r.execShell(t.Context(), job, runID)
 	b.Complete(runID)
 
 	if err != nil {
@@ -89,7 +91,8 @@ func TestExecShell_ExitCodeOnFailure(t *testing.T) {
 		Shell: &types.ShellConfig{Command: `exit 42`},
 	}
 
-	_, exitCode, err := execShell(t.Context(), job, b, runID)
+	r := &Runner{broadcaster: b}
+	_, exitCode, err := r.execShell(t.Context(), job, runID)
 	b.Complete(runID)
 
 	if err == nil {
