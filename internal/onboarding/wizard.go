@@ -13,8 +13,8 @@ import (
 // OnboardingSteps captures which setup conditions are unmet at wizard launch time.
 // Only steps with true flags are shown in the wizard.
 type OnboardingSteps struct {
-	NeedsAPIKey  bool // AnthropicKey is not set
-	NeedsFDA     bool // Full Disk Access not granted
+	NeedsAPIKey  bool // no AI key at all (neither Anthropic nor OpenAI)
+	NeedsFDA     bool // always false — FDA is surfaced by the tray health indicator, not the wizard
 	NeedsService bool // LaunchAgent/Daemon plist not present
 }
 
@@ -38,8 +38,10 @@ var gState atomic.Pointer[state]
 // are required. Each step is only shown if its corresponding condition is unmet.
 func DetectNeededSteps(cfg *config.Config) OnboardingSteps {
 	return OnboardingSteps{
-		NeedsAPIKey:  cfg.AnthropicKey == "",
-		NeedsFDA:     !CheckFDA(),
+		// Only prompt for a key if the user has provided neither Anthropic nor OpenAI.
+		NeedsAPIKey:  cfg.AnthropicKey == "" && cfg.OpenAIKey == "",
+		// FDA is handled by the tray health indicator, not the wizard.
+		NeedsFDA:     false,
 		NeedsService: !isServiceInstalled(),
 	}
 }
@@ -78,8 +80,8 @@ func Show(st store.Store, onDone func()) {
 		s.fdaGranted.Store(CheckFDA())
 		s.steps = DetectNeededSteps(cfg)
 	} else {
-		// No config yet — assume everything is needed.
-		s.steps = OnboardingSteps{NeedsAPIKey: true, NeedsFDA: true, NeedsService: true}
+		// No config yet — assume API key and service are needed; FDA never needed.
+		s.steps = OnboardingSteps{NeedsAPIKey: true, NeedsFDA: false, NeedsService: true}
 	}
 	gState.Store(s)
 	showImpl(s)
