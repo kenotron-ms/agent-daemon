@@ -24,8 +24,10 @@ extern void wizardGoActivation(void);
 - (BOOL)canBecomeMainWindow { return YES; }
 @end
 
-// ── Script message + window delegate ────────────────────────────────────────
-@interface _AgentWizardDelegate : NSObject <WKScriptMessageHandler, NSWindowDelegate>
+// ── Script message + navigation + window delegate ───────────────────────────
+// Conforms to WKNavigationDelegate so we can make WKWebView first responder
+// AFTER the HTML finishes loading — calling it before load completes is a no-op.
+@interface _AgentWizardDelegate : NSObject <WKScriptMessageHandler, WKNavigationDelegate, NSWindowDelegate>
 @end
 
 @implementation _AgentWizardDelegate
@@ -38,6 +40,21 @@ extern void wizardGoActivation(void);
     wizardGoMessage(action.UTF8String, payload.UTF8String);
 }
 
+// Called once the HTML string finishes loading.
+// This is the correct time to set first responder — calling it before
+// load completes is a no-op. Use webView.window so we don't need to
+// reference the C-static _gPanel from inside an ObjC method body.
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    [webView.window makeFirstResponder:webView];
+    // JS-focus the first visible input so the cursor appears immediately.
+    [webView evaluateJavaScript:
+        @"(function(){"
+        @"  var s = document.querySelector('.step-view.active .field-input');"
+        @"  if (s) s.focus();"
+        @"})()"
+        completionHandler:nil];
+}
+
 - (void)windowWillClose:(NSNotification *)notification {
     // Closing state is managed on the Go side via gState.closed.
 }
@@ -45,16 +62,44 @@ extern void wizardGoActivation(void);
 @end
 
 // ── Module-level state ───────────────────────────────────────────────────────
-static NSPanel              *_gPanel    = nil;
-static WKWebView            *_gWebView  = nil;
-static _AgentWizardDelegate *_gDelegate = nil;
-static id                    _gActObs   = nil;
+static NSPanel              *_gPanel     = nil;
+static WKWebView            *_gWebView   = nil;
+static _AgentWizardDelegate *_gDelegate  = nil;
+static id                    _gActObs    = nil;
+static NSMenu               *_gSavedMenu = nil;  // saved main menu, restored on wizard_close
 
 // ── C API ────────────────────────────────────────────────────────────────────
 
 void wizard_show(const char *htmlCStr) {
     NSString *html = [NSString stringWithUTF8String:htmlCStr]; // copy BEFORE async — Go frees the C string on return
     dispatch_async(dispatch_get_main_queue(), ^{
+        // LSUIElement=YES makes this a background-only agent app that never receives
+        // keyboard events. Switch to Regular policy while the wizard is open so the
+        // OS routes keystrokes to our window. Restored to Accessory in wizard_close.
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        [NSApp activateIgnoringOtherApps:YES];
+
+        // Install a minimal Edit menu so Cmd+V / Cmd+C / Cmd+A reach WKWebView.
+        // Save the existing main menu (fyne tray menu) and restore it on close.
+        _gSavedMenu = [NSApp mainMenu];
+        NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@""];
+
+        NSMenuItem *appItem = [[NSMenuItem alloc] init];
+        [mainMenu addItem:appItem];
+        NSMenu *appMenu = [[NSMenu alloc] initWithTitle:@"Agent Daemon"];
+        [appItem setSubmenu:appMenu];
+
+        NSMenuItem *editItem = [[NSMenuItem alloc] init];
+        [mainMenu addItem:editItem];
+        NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+        [editMenu addItemWithTitle:@"Cut"        action:@selector(cut:)       keyEquivalent:@"x"];
+        [editMenu addItemWithTitle:@"Copy"       action:@selector(copy:)      keyEquivalent:@"c"];
+        [editMenu addItemWithTitle:@"Paste"      action:@selector(paste:)     keyEquivalent:@"v"];
+        [editMenu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+        [editItem setSubmenu:editMenu];
+
+        [NSApp setMainMenu:mainMenu];
+
         if (_gPanel) { [_gPanel makeKeyAndOrderFront:nil]; return; }
         // use `html` — ARC retains it across the async boundary
 
@@ -66,6 +111,7 @@ void wizard_show(const char *htmlCStr) {
 
         _gWebView = [[WKWebView alloc] initWithFrame:frame configuration:cfg];
         _gWebView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        _gWebView.navigationDelegate = _gDelegate;  // fires didFinishNavigation after HTML loads
 
         _gPanel = [[_AgentPanel alloc]
             initWithContentRect:frame
@@ -105,6 +151,12 @@ void wizard_close(void) {
         _gPanel    = nil;
         _gWebView  = nil;
         _gDelegate = nil;
+        if (_gSavedMenu) {
+            [NSApp setMainMenu:_gSavedMenu];
+            _gSavedMenu = nil;
+        }
+        // Restore background-agent policy now that the wizard is gone.
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     });
 }
 
