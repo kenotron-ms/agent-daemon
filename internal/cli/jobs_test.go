@@ -3,7 +3,43 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
+
+// resetAddCmdFlags resets all flags on addCmd to their defaults and clears
+// cobra's Changed state so each RunE test starts from a clean slate.
+func resetAddCmdFlags() {
+	addCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	})
+}
+
+// TestAddCmdRunE_ValidatesBeforeNetwork confirms that the new RunE calls
+// validateAddOpts before attempting any network I/O.
+//
+// RED anchor: the OLD RunE only checked "command == ''" unconditionally, so it
+// returned "--command is required" for every executor type.  The NEW RunE
+// delegates to validateAddOpts, which returns executor-specific messages.
+func TestAddCmdRunE_ValidatesBeforeNetwork(t *testing.T) {
+	t.Run("claude-code reports prompt missing not command missing", func(t *testing.T) {
+		resetAddCmdFlags()
+		// Set only what a user would supply for a claude-code job (no --prompt).
+		_ = addCmd.Flags().Set("name", "x")
+		_ = addCmd.Flags().Set("executor", "claude-code")
+		// --trigger defaults to "once"; --prompt intentionally left unset.
+
+		err := addCmd.RunE(addCmd, nil)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		want := `--prompt is required for executor "claude-code"`
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("RunE error = %q\n\twant to contain %q", err.Error(), want)
+		}
+	})
+}
 
 func TestSplitTrimmed(t *testing.T) {
 	tests := []struct {

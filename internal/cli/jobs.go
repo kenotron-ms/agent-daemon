@@ -215,53 +215,156 @@ var listCmd = &cobra.Command{
 var addCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Add a new job",
-	Example: `  # Add a cron job
-  agent-daemon add --name "Daily cleanup" --trigger cron --schedule "0 0 2 * * *" --command "find /tmp -mtime +7 -delete"
+	Example: `  # Shell command on a cron schedule
+  agent-daemon add --name "Nightly cleanup" --trigger cron --schedule "0 0 2 * * *" \
+    --command "find /tmp -mtime +7 -delete"
 
-  # Add a loop job (every 5 minutes)
-  agent-daemon add --name "Health check" --trigger loop --schedule 5m --command "curl -sf http://localhost:8080/health"
+  # Shell command repeating every 5 minutes
+  agent-daemon add --name "Health check" --trigger loop --schedule 5m \
+    --command "curl -sf http://localhost:8080/health"
 
-  # Add a once job (runs immediately, then auto-disables)
-  agent-daemon add --name "Migrate DB" --trigger once --command "/usr/local/bin/migrate.sh"
+  # Shell command when files change in a directory (with debounce)
+  agent-daemon add --name "Auto-lint" --trigger watch --watch-path ./src \
+    --watch-recursive --watch-debounce 500ms --command "npm run lint"
 
-  # Add a once job with a delay
-  agent-daemon add --name "Delayed task" --trigger once --schedule 10m --command "/usr/local/bin/cleanup.sh"
+  # Shell command watching for specific events only
+  agent-daemon add --name "On new file" --trigger watch --watch-path ~/inbox \
+    --watch-events create --command "/usr/local/bin/process-new.sh"
 
+  # Shell command reacting to multiple events (comma-separated, no spaces)
+  agent-daemon add --name "Compile on change" --trigger watch --watch-path ./src \
+    --watch-events "create,write" --command "make build"
+
+  # Shell command with explicit notify mode and rename/chmod events
+  agent-daemon add --name "Perms watcher" --trigger watch --watch-path /etc/app \
+    --watch-mode notify --watch-events "rename,chmod" --command "/usr/local/bin/audit.sh"
+
+  # Watch a network share using poll mode (OS events not available)
+  agent-daemon add --name "NFS watcher" --trigger watch --watch-path /mnt/share \
+    --watch-mode poll --watch-poll-interval 5s --command "/usr/local/bin/sync.sh"
+
+  # Claude prompt on a cron schedule (with model override)
+  agent-daemon add --name "Daily standup" --trigger cron --schedule "0 0 9 * * *" \
+    --executor claude-code --model opus --prompt "Summarize my open GitHub issues and PRs"
+
+  # Claude prompt when files change
+  agent-daemon add --name "Review on save" --trigger watch --watch-path ./src \
+    --watch-recursive --watch-events write --watch-debounce 1s \
+    --executor claude-code --prompt "Review the changed file for issues"
+
+  # Claude prompt repeating on an interval
+  agent-daemon add --name "Periodic check" --trigger loop --schedule 30m \
+    --executor claude-code --prompt "Check for any new alerts in my monitoring dashboard"
+
+  # Claude prompt run once immediately
+  agent-daemon add --name "Onboarding summary" --trigger once \
+    --executor claude-code --prompt "Summarize the onboarding docs in ~/docs/onboarding"
+
+  # Amplifier recipe on an interval
+  agent-daemon add --name "Hourly digest" --trigger loop --schedule 1h \
+    --executor amplifier --recipe ~/recipes/digest.yaml
+
+  # Amplifier recipe triggered by file watch
+  agent-daemon add --name "Process inbox" --trigger watch --watch-path ~/inbox \
+    --executor amplifier --recipe ~/recipes/process-inbox.yaml
+
+  # Amplifier prompt with model on a cron schedule
+  agent-daemon add --name "Weekly review" --trigger cron --schedule "0 0 9 * * 1" \
+    --executor amplifier --model sonnet --prompt "Run my weekly review workflow"
+
+  # Amplifier recipe + additional prompt instruction (both may be set)
+  agent-daemon add --name "Guided process" --trigger watch --watch-path ~/docs \
+    --executor amplifier --recipe ~/recipes/process.yaml \
+    --prompt "Focus on files modified in the last hour"
+
+  # Amplifier recipe run once with a delay
+  agent-daemon add --name "Post-deploy check" --trigger once --schedule 5m \
+    --executor amplifier --recipe ~/recipes/post-deploy.yaml
+
+  # Run once immediately (default trigger, shell)
+  agent-daemon add --name "Migrate DB" --command "/usr/local/bin/migrate.sh"
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
 
-		name, _ := cmd.Flags().GetString("name")
-		desc, _ := cmd.Flags().GetString("description")
-		triggerType, _ := cmd.Flags().GetString("trigger")
-		schedule, _ := cmd.Flags().GetString("schedule")
-		command, _ := cmd.Flags().GetString("command")
-		cwd, _ := cmd.Flags().GetString("cwd")
-		timeout, _ := cmd.Flags().GetString("timeout")
-		retries, _ := cmd.Flags().GetInt("retries")
+		// Read all flags into opts struct.
+		opts := addOpts{}
+		opts.name, _ = cmd.Flags().GetString("name")
+		opts.description, _ = cmd.Flags().GetString("description")
+		opts.triggerType, _ = cmd.Flags().GetString("trigger")
+		opts.schedule, _ = cmd.Flags().GetString("schedule")
+		opts.executorType, _ = cmd.Flags().GetString("executor")
+		opts.command, _ = cmd.Flags().GetString("command")
+		opts.prompt, _ = cmd.Flags().GetString("prompt")
+		opts.recipe, _ = cmd.Flags().GetString("recipe")
+		opts.model, _ = cmd.Flags().GetString("model")
+		opts.cwd, _ = cmd.Flags().GetString("cwd")
+		opts.timeout, _ = cmd.Flags().GetString("timeout")
+		opts.retries, _ = cmd.Flags().GetInt("retries")
+		opts.watchPath, _ = cmd.Flags().GetString("watch-path")
+		opts.watchRecursive, _ = cmd.Flags().GetBool("watch-recursive")
+		opts.watchEvents, _ = cmd.Flags().GetString("watch-events")
+		opts.watchDebounce, _ = cmd.Flags().GetString("watch-debounce")
+		opts.watchMode, _ = cmd.Flags().GetString("watch-mode")
+		opts.watchPollInterval, _ = cmd.Flags().GetString("watch-poll-interval")
 
-		if name == "" {
-			return fmt.Errorf("--name is required")
-		}
-		if command == "" {
-			return fmt.Errorf("--command is required")
-		}
-		if triggerType == "" {
-			triggerType = "immediate"
+		// Build changedFlags map for validation (uses Changed() semantics).
+		changedFlags := make(map[string]bool)
+		for _, f := range []string{
+			"command", "recipe", "model",
+			"watch-path", "watch-recursive", "watch-events",
+			"watch-debounce", "watch-mode", "watch-poll-interval",
+		} {
+			changedFlags[f] = cmd.Flags().Changed(f)
 		}
 
+		// Validate.
+		if err := validateAddOpts(opts, changedFlags); err != nil {
+			return err
+		}
+
+		// Build job.
 		job := types.Job{
-			Name:        name,
-			Description: desc,
+			Name:        opts.name,
+			Description: opts.description,
 			Trigger: types.Trigger{
-				Type:     types.TriggerType(triggerType),
-				Schedule: schedule,
+				Type:     types.TriggerType(opts.triggerType),
+				Schedule: opts.schedule,
 			},
-			Command:    command,
-			CWD:        cwd,
-			Timeout:    timeout,
-			MaxRetries: retries,
+			Executor:   types.ExecutorType(opts.executorType),
+			CWD:        opts.cwd,
+			Timeout:    opts.timeout,
+			MaxRetries: opts.retries,
 			Enabled:    true,
+		}
+
+		// Executor config.
+		switch job.Executor {
+		case types.ExecutorShell:
+			job.Shell = &types.ShellConfig{Command: opts.command}
+		case types.ExecutorClaudeCode:
+			job.ClaudeCode = &types.ClaudeCodeConfig{
+				Prompt: opts.prompt,
+				Model:  opts.model,
+			}
+		case types.ExecutorAmplifier:
+			job.Amplifier = &types.AmplifierConfig{
+				Prompt:     opts.prompt,
+				RecipePath: opts.recipe,
+				Model:      opts.model,
+			}
+		}
+
+		// Watch config.
+		if job.Trigger.Type == types.TriggerWatch {
+			job.Watch = &types.WatchConfig{
+				Path:         opts.watchPath,
+				Recursive:    opts.watchRecursive,
+				Events:       splitTrimmed(opts.watchEvents, ","),
+				Mode:         opts.watchMode,
+				PollInterval: opts.watchPollInterval,
+				Debounce:     opts.watchDebounce,
+			}
 		}
 
 		body, _ := json.Marshal(job)
