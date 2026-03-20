@@ -36,6 +36,139 @@ func splitTrimmed(s, sep string) []string {
 	return out
 }
 
+// addOpts holds all parsed flag values for the add command.
+type addOpts struct {
+	name              string
+	description       string
+	triggerType       string
+	schedule          string
+	executorType      string
+	command           string
+	prompt            string
+	recipe            string
+	model             string
+	cwd               string
+	timeout           string
+	retries           int
+	watchPath         string
+	watchRecursive    bool
+	watchEvents       string
+	watchDebounce     string
+	watchMode         string
+	watchPollInterval string
+}
+
+// validTriggers and validExecutors are the accepted string values.
+var validTriggers = map[string]bool{
+	"cron": true, "loop": true, "once": true, "watch": true,
+}
+var validExecutors = map[string]bool{
+	"shell": true, "claude-code": true, "amplifier": true,
+}
+
+// validWatchEvents is the full set of accepted event tokens (including aliases).
+var validWatchEvents = map[string]bool{
+	"create": true, "write": true, "modify": true,
+	"remove": true, "delete": true, "rename": true, "chmod": true,
+}
+
+// pollUnsupportedEvents are events the poll watcher cannot detect.
+var pollUnsupportedEvents = map[string]bool{"rename": true, "chmod": true}
+
+// validateAddOpts validates flag combinations before constructing a job or calling
+// the API. changedFlags simulates cobra's cmd.Flags().Changed() — keys are flag
+// names that were explicitly set by the user (not just defaulted).
+func validateAddOpts(opts addOpts, changedFlags map[string]bool) error {
+	// 1. name
+	if opts.name == "" {
+		return fmt.Errorf("--name is required")
+	}
+	// 2. trigger value
+	if !validTriggers[opts.triggerType] {
+		return fmt.Errorf("invalid trigger %q: must be cron, loop, once, or watch", opts.triggerType)
+	}
+	// 3. executor value
+	if !validExecutors[opts.executorType] {
+		return fmt.Errorf("invalid executor %q: must be shell, claude-code, or amplifier", opts.executorType)
+	}
+	// 4. executor cross-checks
+	if changedFlags["command"] && opts.executorType != "shell" {
+		return fmt.Errorf("--command is only valid with --executor shell")
+	}
+	if changedFlags["recipe"] && opts.executorType != "amplifier" {
+		return fmt.Errorf("--recipe is only valid with --executor amplifier")
+	}
+	if changedFlags["model"] && opts.executorType == "shell" {
+		return fmt.Errorf("--model is only valid with --executor claude-code or amplifier")
+	}
+	switch opts.executorType {
+	case "shell":
+		if opts.command == "" {
+			return fmt.Errorf("--command is required for executor \"shell\"")
+		}
+	case "claude-code":
+		if opts.prompt == "" {
+			return fmt.Errorf("--prompt is required for executor \"claude-code\"")
+		}
+	case "amplifier":
+		if opts.prompt == "" && opts.recipe == "" {
+			return fmt.Errorf("--prompt or --recipe is required for executor \"amplifier\"")
+		}
+	}
+	// 5. watch-flag guards — must use Changed() semantics (not value checks)
+	//    because --watch-mode defaults to "notify" (non-empty).
+	watchFlagNames := []string{
+		"watch-path", "watch-recursive", "watch-events",
+		"watch-debounce", "watch-mode", "watch-poll-interval",
+	}
+	for _, f := range watchFlagNames {
+		if changedFlags[f] && opts.triggerType != "watch" {
+			return fmt.Errorf("--%s requires --trigger watch", f)
+		}
+	}
+	if opts.triggerType == "watch" && opts.watchPath == "" {
+		return fmt.Errorf("--watch-path is required when --trigger watch")
+	}
+	if changedFlags["watch-mode"] {
+		if opts.watchMode != "notify" && opts.watchMode != "poll" {
+			return fmt.Errorf("invalid --watch-mode %q: must be notify or poll", opts.watchMode)
+		}
+	}
+	// 6. duration format checks (only when explicitly set)
+	if changedFlags["watch-debounce"] {
+		if _, err := time.ParseDuration(opts.watchDebounce); err != nil {
+			return fmt.Errorf("invalid --watch-debounce %q: use time.ParseDuration format, e.g. \"500ms\", \"1s\"", opts.watchDebounce)
+		}
+	}
+	if changedFlags["watch-poll-interval"] {
+		if _, err := time.ParseDuration(opts.watchPollInterval); err != nil {
+			return fmt.Errorf("invalid --watch-poll-interval %q: use time.ParseDuration format, e.g. \"2s\", \"500ms\"", opts.watchPollInterval)
+		}
+	}
+	// 7. watch-events token validation (only when non-empty)
+	if opts.watchEvents != "" {
+		tokens := splitTrimmed(opts.watchEvents, ",")
+		for _, tok := range tokens {
+			if !validWatchEvents[tok] {
+				return fmt.Errorf("invalid event %q: valid events are create, write, modify, remove, delete, rename, chmod", tok)
+			}
+		}
+		// 7b. poll mode doesn't support rename/chmod
+		if opts.watchMode == "poll" {
+			for _, tok := range tokens {
+				if pollUnsupportedEvents[tok] {
+					return fmt.Errorf("--watch-mode poll does not support event %q: poll mode detects only create, write, remove", tok)
+				}
+			}
+		}
+	}
+	// 8. poll-interval requires poll mode
+	if changedFlags["watch-poll-interval"] && opts.watchMode != "poll" {
+		return fmt.Errorf("--watch-poll-interval requires --watch-mode poll")
+	}
+	return nil
+}
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all jobs",
