@@ -125,10 +125,12 @@ func TestValidateAddOpts(t *testing.T) {
 			changedFlags: changed("watch-mode"),
 			wantErr:      `invalid --watch-mode "inotify"`,
 		},
+		// invalid watch-events token — validation is value-based (opts.watchEvents != ""),
+		// not gated on changedFlags["watch-events"]
 		{
 			name:         "invalid watch-events token",
 			opts:         addOpts{name: "x", triggerType: "watch", executorType: "shell", command: "echo", watchPath: "/tmp", watchMode: "notify", watchEvents: "created"},
-			changedFlags: changed("watch-events"),
+			changedFlags: none,
 			wantErr:      `invalid event "created"`,
 		},
 		{
