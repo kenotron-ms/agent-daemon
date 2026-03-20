@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -14,6 +15,26 @@ import (
 	"github.com/ms/agent-daemon/internal/config"
 	"github.com/ms/agent-daemon/internal/types"
 )
+
+// splitTrimmed splits s on sep, trims whitespace from each token, and discards
+// empty tokens. Returns nil (not []string{}) when the result is empty so the
+// backend applies its all-events default.
+func splitTrimmed(s, sep string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
 
 var listCmd = &cobra.Command{
 	Use:   "list",
