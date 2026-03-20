@@ -281,6 +281,10 @@ var addCmd = &cobra.Command{
   agent-daemon add --name "Post-deploy check" --trigger once --schedule 5m \
     --executor amplifier --recipe ~/recipes/post-deploy.yaml
 
+  # Shell command run once (explicit trigger)
+  agent-daemon add --name "Run migration" --trigger once \
+    --command "/usr/local/bin/migrate.sh"
+
   # Run once immediately (default trigger, shell)
   agent-daemon add --name "Migrate DB" --command "/usr/local/bin/migrate.sh"
 `,
@@ -383,7 +387,7 @@ var addCmd = &cobra.Command{
 
 		var created types.Job
 		json.NewDecoder(resp.Body).Decode(&created)
-		fmt.Printf("✓ Job created: %s (id: %s)\n", created.Name, created.ID)
+		fmt.Printf("✓ Job created: %s (id: %s)\n", created.Name, created.ID[:8])
 		return nil
 	},
 }
