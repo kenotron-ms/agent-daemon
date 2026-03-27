@@ -7,10 +7,11 @@ import "time"
 type TriggerType string
 
 const (
-	TriggerLoop  TriggerType = "loop"  // repeating interval, e.g. "30s"
-	TriggerCron  TriggerType = "cron"  // standard cron expression
-	TriggerOnce  TriggerType = "once"  // run once after optional delay, then auto-disable
-	TriggerWatch TriggerType = "watch" // fires when a file/directory changes
+	TriggerLoop      TriggerType = "loop"      // repeating interval, e.g. "30s"
+	TriggerCron      TriggerType = "cron"       // standard cron expression
+	TriggerOnce      TriggerType = "once"       // run once after optional delay, then auto-disable
+	TriggerWatch     TriggerType = "watch"      // fires when a file/directory changes
+	TriggerConnector TriggerType = "connector"  // fires when a mirror connector detects a change
 )
 
 type Trigger struct {
@@ -53,6 +54,12 @@ type AmplifierConfig struct {
 	Context    map[string]string `json:"context,omitempty"`    // recipe context variables
 }
 
+// ConnectorConfig is the config for TriggerConnector.
+// Links a job to a mirror connector — the job fires when the connector detects a change.
+type ConnectorConfig struct {
+	ConnectorID string `json:"connectorId"` // ID of the mirror connector that triggers this job
+}
+
 // WatchConfig is the config for TriggerWatch.
 type WatchConfig struct {
 	Path         string   `json:"path"`                   // file or directory to watch
@@ -85,6 +92,9 @@ type Job struct {
 
 	// Watch trigger config.
 	Watch *WatchConfig `json:"watch,omitempty"`
+
+	// Connector trigger config.
+	Connector *ConnectorConfig `json:"connector,omitempty"`
 
 	// Deprecated: top-level Command kept for backward compat with existing DB entries.
 	Command string `json:"command,omitempty"`

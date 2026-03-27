@@ -48,7 +48,8 @@ func init() {
 		removeCmd,
 		pruneCmd,
 		configCmd,
-		serveCmd,    // internal: invoked by service manager
-		mirrorCmd,   // mirror subcommands: entities, get, changes, connectors
+		serveCmd,      // internal: invoked by service manager
+		mirrorCmd,     // mirror subcommands: entities, get, changes, connectors
+		connectorCmd,  // connector subcommands: add, list, remove
 	)
 }

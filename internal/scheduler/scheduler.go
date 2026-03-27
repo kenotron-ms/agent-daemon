@@ -97,6 +97,12 @@ func (s *Scheduler) TriggerNow(jobID string) error {
 	return nil
 }
 
+// TriggerWithEnv dispatches a job with pre-set RuntimeEnv (e.g., from connector sync).
+// The job must already have RuntimeEnv populated by the caller.
+func (s *Scheduler) TriggerWithEnv(job *types.Job) {
+	s.dispatch(job)
+}
+
 // AddJob registers a single job in the scheduler.
 func (s *Scheduler) AddJob(job *types.Job) {
 	if !job.Enabled {

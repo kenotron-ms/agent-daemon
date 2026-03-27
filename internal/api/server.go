@@ -122,7 +122,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Mirror — connectors
 	mux.HandleFunc("GET /api/mirror/connectors", s.listConnectors)
+	mux.HandleFunc("POST /api/mirror/connectors", s.createConnector)
 	mux.HandleFunc("GET /api/mirror/connectors/{id}", s.getConnector)
+	mux.HandleFunc("PUT /api/mirror/connectors/{id}", s.updateConnector)
 	mux.HandleFunc("DELETE /api/mirror/connectors/{id}", s.deleteConnector)
 
 	// Mirror — entities

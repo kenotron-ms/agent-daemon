@@ -58,6 +58,10 @@ func (s *BoltStore) migrate() error {
 
 func (s *BoltStore) Close() error { return s.db.Close() }
 
+// DB returns the underlying bbolt database for shared access by subsystems
+// (e.g., mirror store) that use the same database file with their own buckets.
+func (s *BoltStore) DB() *bolt.DB { return s.db }
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 func (s *BoltStore) SaveJob(_ context.Context, job *types.Job) error {

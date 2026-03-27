@@ -9,6 +9,7 @@ import (
 
 	"github.com/ms/agent-daemon/internal/api"
 	"github.com/ms/agent-daemon/internal/config"
+	"github.com/ms/agent-daemon/internal/mirror"
 	"github.com/ms/agent-daemon/internal/platform"
 	"github.com/ms/agent-daemon/internal/queue"
 	"github.com/ms/agent-daemon/internal/scheduler"
@@ -16,16 +17,18 @@ import (
 	"github.com/ms/agent-daemon/internal/types"
 )
 
-// Daemon wires together store, scheduler, queue, and HTTP server.
+// Daemon wires together store, scheduler, queue, mirror, and HTTP server.
 type Daemon struct {
-	cfg       *config.Config
-	store     store.Store
-	scheduler *scheduler.Scheduler
-	queue     *queue.BoundedQueue
-	server    *api.Server
-	startedAt time.Time
-	ctx       context.Context
-	cancel    context.CancelFunc
+	cfg         *config.Config
+	store       store.Store
+	scheduler   *scheduler.Scheduler
+	queue       *queue.BoundedQueue
+	server      *api.Server
+	mirrorStore *mirror.MirrorStore
+	syncEngine  *mirror.SyncEngine
+	startedAt   time.Time
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 func NewDaemon() (*Daemon, error) {
@@ -80,8 +83,50 @@ func (d *Daemon) Run() error {
 	srv := api.NewServer(d.cfg, d.store, sched, jobQueue, d.startedAt, broadcaster)
 	d.server = srv
 
+	// Wire up the mirror subsystem (connector/entity sync).
+	if boltStore, ok := d.store.(*store.BoltStore); ok {
+		ms, err := mirror.NewMirrorStore(boltStore.DB())
+		if err != nil {
+			slog.Error("failed to init mirror store", "err", err)
+		} else {
+			d.mirrorStore = ms
+
+			fetchers := map[mirror.FetchMethod]mirror.Fetcher{
+				mirror.FetchCommand: mirror.NewCommandFetcher(),
+				mirror.FetchHTTP:    mirror.NewHTTPFetcher(),
+				mirror.FetchBrowser: mirror.NewBrowserFetcher(""),
+			}
+			se := mirror.NewSyncEngine(ms, fetchers)
+
+			// When a connector detects a change, dispatch its linked jobs.
+			se.OnChange = func(conn *mirror.Connector, entity *mirror.Entity, diff *mirror.DiffResult) {
+				diffJSON, _ := mirror.DiffToJSON(diff)
+				for _, jobID := range conn.JobIDs {
+					job, err := d.store.GetJob(d.ctx, jobID)
+					if err != nil || !job.Enabled {
+						continue
+					}
+					job.RuntimeEnv = map[string]string{
+						"MIRROR_ENTITY":       entity.Address,
+						"MIRROR_CONNECTOR_ID": conn.ID,
+						"MIRROR_DIFF_JSON":    string(diffJSON),
+					}
+					sched.TriggerWithEnv(job)
+				}
+			}
+
+			d.syncEngine = se
+			srv.SetMirror(ms, se)
+		}
+	}
+
 	if err := sched.Start(d.ctx); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
+	}
+
+	// Start the sync engine after the scheduler is running.
+	if d.syncEngine != nil {
+		d.syncEngine.Start(d.ctx)
 	}
 
 	slog.Info("agent-daemon started",
@@ -97,6 +142,9 @@ func (d *Daemon) Shutdown() {
 	slog.Info("agent-daemon shutting down")
 	if d.cancel != nil {
 		d.cancel()
+	}
+	if d.syncEngine != nil {
+		d.syncEngine.Stop()
 	}
 	if d.scheduler != nil {
 		d.scheduler.Stop()
