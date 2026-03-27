@@ -21,3 +21,6 @@ packaging/macos/setup-github-secrets.sh
 # Git worktrees (isolated feature branch directories)
 # Prevents accidentally committing worktree contents to the repository
 .worktrees/
+
+# Canvas worktree sessions
+canvas_worktrees/

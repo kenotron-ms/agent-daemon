@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ms/agent-daemon/internal/config"
+	"github.com/ms/agent-daemon/internal/mirror"
 	"github.com/ms/agent-daemon/internal/nl"
 	"github.com/ms/agent-daemon/internal/queue"
 	"github.com/ms/agent-daemon/internal/scheduler"
@@ -25,6 +26,8 @@ type Server struct {
 	nlClient    nl.NLClient
 	nlMu        sync.RWMutex
 	httpSrv     *http.Server
+	mirrorStore *mirror.MirrorStore
+	syncEngine  *mirror.SyncEngine
 }
 
 func NewServer(cfg *config.Config, s store.Store, sched *scheduler.Scheduler, q *queue.BoundedQueue, startedAt time.Time, b *scheduler.Broadcaster) *Server {
@@ -38,6 +41,13 @@ func NewServer(cfg *config.Config, s store.Store, sched *scheduler.Scheduler, q 
 	}
 	srv.nlClient = nl.NewClientFromConfig(cfg, s, sched)
 	return srv
+}
+
+// SetMirror wires the mirror subsystem into the server. Called by the daemon
+// after constructing the MirrorStore and SyncEngine. Safe to call before Start.
+func (s *Server) SetMirror(ms *mirror.MirrorStore, se *mirror.SyncEngine) {
+	s.mirrorStore = ms
+	s.syncEngine = se
 }
 
 func (s *Server) reinitNLClient() {
@@ -109,6 +119,19 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/chat", s.chat)
 	mux.HandleFunc("GET /api/chat/history", s.getChatHistory)
 	mux.HandleFunc("DELETE /api/chat/history", s.clearChatHistory)
+
+	// Mirror — connectors
+	mux.HandleFunc("GET /api/mirror/connectors", s.listConnectors)
+	mux.HandleFunc("GET /api/mirror/connectors/{id}", s.getConnector)
+	mux.HandleFunc("DELETE /api/mirror/connectors/{id}", s.deleteConnector)
+
+	// Mirror — entities
+	mux.HandleFunc("GET /api/mirror/entities", s.listEntities)
+	mux.HandleFunc("GET /api/mirror/entities/{address...}", s.getEntity)
+
+	// Mirror — changes
+	mux.HandleFunc("GET /api/mirror/changes", s.listChanges)
+	mux.HandleFunc("POST /api/mirror/changes/prune", s.pruneChanges)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
