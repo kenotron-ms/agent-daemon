@@ -45,6 +45,24 @@ if ($userPath -notlike "*$InstallDir*") {
     Write-Host "$InstallDir is already in your PATH."
 }
 
+# ── Amplifier bundle ─────────────────────────────────────────────────────────
+if (Get-Command amplifier -ErrorAction SilentlyContinue) {
+    Write-Host ""
+    Write-Host "Registering Amplifier app bundle..."
+    try {
+        & amplifier bundle add "git+https://github.com/kenotron-ms/agent-daemon@main" --app
+        Write-Host "✓ Amplifier app bundle registered (active in every session)"
+    } catch {
+        Write-Host "⚠ Could not register Amplifier bundle — run manually:"
+        Write-Host "    amplifier bundle add git+https://github.com/kenotron-ms/agent-daemon@main --app"
+    }
+} else {
+    Write-Host ""
+    Write-Host "Note: Amplifier not found — skipping bundle registration."
+    Write-Host "      Once installed, run:"
+    Write-Host "        amplifier bundle add git+https://github.com/kenotron-ms/agent-daemon@main --app"
+}
+
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  agent-daemon install   # register as a user-level service"
