@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ms/agent-daemon/internal/api"
+	"github.com/ms/amplifier-app-loom/internal/api"
+	"github.com/ms/amplifier-app-loom/internal/updater"
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "agent-daemon",
+	Use:     "loom",
 	Version: api.Version,
 	Short:   "Scheduled job execution daemon with web UI",
-	Long: `agent-daemon — a cross-platform scheduled job runner.
+	Long: `loom — a cross-platform scheduled job runner.
 
 Runs as a system service (launchd / systemd / Windows Service) with:
   - Cron, interval, and immediate job triggers
@@ -22,6 +23,9 @@ Runs as a system service (launchd / systemd / Windows Service) with:
 }
 
 func Execute() {
+	// Remove any <exe>.old leftover from a previous auto-update.
+	updater.CleanupOldBinary()
+
 	// When launched as a macOS .app bundle, macOS sets __CFBundleIdentifier
 	// in the environment. In that case, default to the tray command.
 	if os.Getenv("__CFBundleIdentifier") != "" && len(os.Args) == 1 {

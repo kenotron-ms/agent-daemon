@@ -19,7 +19,7 @@ import (
 // data source has an API.
 type BrowserFetcher struct {
 	// ProfileDir is the base directory for browser profiles.
-	// Defaults to ~/.agent-daemon/browser-profiles/
+	// Defaults to ~/.loom/browser-profiles/
 	ProfileDir string
 	// Timeout for browser operations. Defaults to 60s.
 	Timeout time.Duration
@@ -28,7 +28,7 @@ type BrowserFetcher struct {
 // NewBrowserFetcher returns a BrowserFetcher with sensible defaults.
 func NewBrowserFetcher(profileDir string) *BrowserFetcher {
 	if profileDir == "" {
-		profileDir = "~/.agent-daemon/browser-profiles"
+		profileDir = "~/.loom/browser-profiles"
 	}
 	return &BrowserFetcher{
 		ProfileDir: profileDir,
@@ -58,36 +58,42 @@ func (f *BrowserFetcher) Fetch(conn *Connector) (*FetchResult, error) {
 	// 2. Wait for page load
 	// 3. Take a snapshot (accessibility tree) for the agent to parse
 	// The Prompt determines what to extract
-	var stdout, stderr bytes.Buffer
+	// Shared profile/session flags reused across all three commands so they
+	// operate on the same persistent browser session.
+	sessionFlags := []string{"--profile", profilePath, "--session-name", sessionName}
 
-	// Use eval for JS-like prompts, snapshot for natural language prompts
-	var args []string
+	// Step 1: open the URL.
+	var openStderr bytes.Buffer
+	openCmd := exec.Command("agent-browser", append(sessionFlags, "open", conn.URL)...)
+	openCmd.Stderr = &openStderr
+	if err := openCmd.Run(); err != nil {
+		return nil, fmt.Errorf("browser fetcher open: %s (stderr: %s)", err, openStderr.String())
+	}
+
+	// Step 2: wait for page load — best-effort; fall back to a plain sleep if
+	// this agent-browser version doesn't support the wait sub-command.
+	waitCmd := exec.Command("agent-browser", append(sessionFlags, "wait", "2000")...)
+	if err := waitCmd.Run(); err != nil {
+		time.Sleep(2 * time.Second)
+	}
+
+	// Step 3: extract data — eval for JS prompts, snapshot for natural language.
+	// Capture stdout only from this final step.
+	var stdout, finalStderr bytes.Buffer
+	var finalArgs []string
 	if isJavaScript(conn.Prompt) {
-		args = []string{
-			"--profile", profilePath,
-			"--session-name", sessionName,
-			"open", conn.URL,
-			"&&", "agent-browser", "wait", "2000",
-			"&&", "agent-browser", "eval", conn.Prompt,
-		}
+		// Use eval for JS-like prompts, snapshot for natural language prompts
+		finalArgs = append(sessionFlags, "eval", conn.Prompt)
 	} else {
 		// For natural language prompts, take a snapshot — the sync engine
 		// will pass this to the browser-operator agent for extraction
-		args = []string{
-			"--profile", profilePath,
-			"--session-name", sessionName,
-			"open", conn.URL,
-			"&&", "agent-browser", "wait", "2000",
-			"&&", "agent-browser", "snapshot",
-		}
+		finalArgs = append(sessionFlags, "snapshot")
 	}
-
-	cmd := exec.Command("agent-browser", args...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("browser fetcher: %s (stderr: %s)", err, stderr.String())
+	finalCmd := exec.Command("agent-browser", finalArgs...)
+	finalCmd.Stdout = &stdout
+	finalCmd.Stderr = &finalStderr
+	if err := finalCmd.Run(); err != nil {
+		return nil, fmt.Errorf("browser fetcher extract: %s (stderr: %s)", err, finalStderr.String())
 	}
 
 	output := bytes.TrimSpace(stdout.Bytes())

@@ -10,13 +10,13 @@ import (
 )
 
 const (
-	ServiceName        = "agent-daemon"
-	ServiceDisplayName = "Agent Daemon"
+	ServiceName        = "loom"
+	ServiceDisplayName = "Loom"
 	ServiceDescription = "Scheduled job execution daemon with web UI and natural language interface"
 
 	// LaunchAgentPlistName is the filename used by the kardianos/service library
 	// for the macOS LaunchAgent plist (~/Library/LaunchAgents/).
-	LaunchAgentPlistName = ServiceName + ".plist" // "agent-daemon.plist"
+	LaunchAgentPlistName = ServiceName + ".plist" // "loom.plist"
 )
 
 // InstallLevel controls whether the service is installed for the current user
@@ -64,7 +64,7 @@ func resolveExePath() string {
 // BuildServiceConfig returns the kardianos service config for the given install level.
 func BuildServiceConfig(level InstallLevel) *service.Config {
 	// Resolve symlinks so the LaunchAgent plist always points to the real binary
-	// inside the .app bundle — this ensures TCC grants to com.ms.agent-daemon apply
+	// inside the .app bundle — this ensures TCC grants to com.ms.amplifier-app-loom apply
 	// to the daemon process (same TCC identity as the tray).
 	exePath := resolveExePath()
 	cfg := &service.Config{
@@ -128,6 +128,21 @@ func NewService(level InstallLevel) (service.Service, *Program, error) {
 func NewServiceForControl(level InstallLevel) (service.Service, error) {
 	p := &Program{daemon: nil}
 	svc, err := service.New(p, BuildServiceConfig(level))
+	if err != nil {
+		return nil, err
+	}
+	return svc, nil
+}
+
+// NewServiceForControlWithExe is like NewServiceForControl but overrides the
+// executable path in the service config. Use this after a binary swap to
+// reinstall the service pointing at the new binary path without relying on
+// os.Executable() (which may still point to the old inode on Linux).
+func NewServiceForControlWithExe(level InstallLevel, exePath string) (service.Service, error) {
+	p := &Program{daemon: nil}
+	cfg := BuildServiceConfig(level)
+	cfg.Executable = exePath
+	svc, err := service.New(p, cfg)
 	if err != nil {
 		return nil, err
 	}
