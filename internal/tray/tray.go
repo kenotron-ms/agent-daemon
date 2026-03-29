@@ -191,6 +191,7 @@ func onReady(port int) {
 	mUninstall := systray.AddMenuItem("Uninstall", "Remove installed service")
 
 	systray.AddSeparator()
+	mCheckUpdate := systray.AddMenuItem("Check for Updates", "Check GitHub for a newer release")
 	mUpdateAvail := systray.AddMenuItem("", "")
 	mUpdateAvail.Hide()
 	mQuit := systray.AddMenuItem("Quit Tray", "Close the tray app (daemon keeps running)")
@@ -334,6 +335,15 @@ func onReady(port int) {
 
 		case <-mUninstall.ClickedCh:
 			uninstallService()
+
+		case <-mCheckUpdate.ClickedCh:
+			mCheckUpdate.SetTitle("Checking…")
+			mCheckUpdate.Disable()
+			go func() {
+				_ = u.CheckAndStage(context.Background())
+				mCheckUpdate.SetTitle("Check for Updates")
+				mCheckUpdate.Enable()
+			}()
 
 		case <-mUpdateAvail.ClickedCh:
 			switch u.State() {
