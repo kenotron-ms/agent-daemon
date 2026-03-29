@@ -206,14 +206,44 @@ func onReady(port int) {
 		}
 	}()
 
-	// Check for updates once, shortly after launch.
+	// ── Auto-updater ──────────────────────────────────────────────────────────
+	// onChange runs from the updater's goroutine; systray menu ops are safe
+	// to call from any goroutine.
+	u := updater.New(api.Version, func(s updater.State, ver string) {
+		switch s {
+		case updater.StateDownloading:
+			mUpdateAvail.SetTitle(fmt.Sprintf("⬇  Downloading v%s…", ver))
+			mUpdateAvail.SetTooltip("Please wait — downloading update")
+			mUpdateAvail.Disable()
+			mUpdateAvail.Show()
+		case updater.StateReady:
+			mUpdateAvail.SetTitle(fmt.Sprintf("↻  Restart to apply v%s", ver))
+			mUpdateAvail.SetTooltip("Click to stop the service, swap binary, reinstall, and re-launch")
+			mUpdateAvail.Enable()
+			mUpdateAvail.Show()
+		case updater.StateApplying:
+			mUpdateAvail.SetTitle("⏳  Applying update…")
+			mUpdateAvail.Disable()
+		case updater.StateFailed:
+			mUpdateAvail.SetTitle("⚠  Update failed — click to retry")
+			mUpdateAvail.SetTooltip("Click to try again")
+			mUpdateAvail.Enable()
+			mUpdateAvail.Show()
+		default:
+			mUpdateAvail.Hide()
+		}
+	})
+
+	// Check on startup (after a short delay so the tray init completes first),
+	// then every 4 hours.
 	go func() {
 		time.Sleep(5 * time.Second)
-		latest, _, err := updater.LatestRelease()
-		if err == nil && updater.IsNewer(api.Version, latest) {
-			mUpdateAvail.SetTitle(fmt.Sprintf("Update available: v%s", latest))
-			mUpdateAvail.SetTooltip("Run: agent-daemon update")
-			mUpdateAvail.Show()
+		_ = u.CheckAndStage(context.Background())
+
+		ticker := time.NewTicker(4 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			_ = u.CheckAndStage(context.Background())
 		}
 	}()
 
@@ -306,7 +336,21 @@ func onReady(port int) {
 			uninstallService()
 
 		case <-mUpdateAvail.ClickedCh:
-			openBrowser("https://github.com/kenotron-ms/agent-daemon/releases/latest")
+			switch u.State() {
+			case updater.StateReady:
+				// Apply the staged update: stop service, swap binary,
+				// reinstall service, then re-exec as tray.
+				go func() {
+					if err := u.Apply("tray"); err != nil {
+						slog.Error("tray: auto-update apply failed", "err", err)
+					}
+				}()
+			case updater.StateFailed:
+				// Retry the check + download.
+				go func() {
+					_ = u.CheckAndStage(context.Background())
+				}()
+			}
 
 		case <-mFixAPIKey.ClickedCh:
 			openBrowser(fmt.Sprintf("http://localhost:%d/#/settings", port))

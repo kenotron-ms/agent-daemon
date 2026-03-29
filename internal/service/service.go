@@ -134,6 +134,21 @@ func NewServiceForControl(level InstallLevel) (service.Service, error) {
 	return svc, nil
 }
 
+// NewServiceForControlWithExe is like NewServiceForControl but overrides the
+// executable path in the service config. Use this after a binary swap to
+// reinstall the service pointing at the new binary path without relying on
+// os.Executable() (which may still point to the old inode on Linux).
+func NewServiceForControlWithExe(level InstallLevel, exePath string) (service.Service, error) {
+	p := &Program{daemon: nil}
+	cfg := BuildServiceConfig(level)
+	cfg.Executable = exePath
+	svc, err := service.New(p, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return svc, nil
+}
+
 // RunDaemon starts the daemon directly (used by _serve sub-command).
 func RunDaemon() error {
 	daemon, err := NewDaemon()
