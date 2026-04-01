@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"os"
 
 	"github.com/ms/amplifier-app-loom/internal/files"
 )
@@ -155,11 +154,7 @@ func (s *Server) spawnTerminal(w http.ResponseWriter, r *http.Request) {
 	// Key by session ID — each session gets its own independent shell process.
 	// Clicking the same session multiple times reuses the same PTY (dedup by session ID).
 	key := sess.ID
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-	processID, err := s.ptyMgr.Spawn(key, sess.WorktreePath, []string{shell})
+	processID, err := s.ptyMgr.Spawn(key, sess.WorktreePath, []string{"amplifier", "run", "--mode", "chat"})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -171,6 +166,23 @@ func (s *Server) spawnTerminal(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	processID := r.PathValue("processId")
 	s.ptyMgr.ServeWS(w, r, processID)
+}
+
+func (s *Server) resizeTerminal(w http.ResponseWriter, r *http.Request) {
+	processID := r.PathValue("processId")
+	var req struct {
+		Cols uint16 `json:"cols"`
+		Rows uint16 `json:"rows"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := s.ptyMgr.Resize(processID, req.Cols, req.Rows); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ── Files ─────────────────────────────────────────────────────────────────────

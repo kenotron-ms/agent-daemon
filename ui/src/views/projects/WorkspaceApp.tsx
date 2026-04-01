@@ -1,7 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import '@xterm/xterm/css/xterm.css'
+import { useEffect, useState } from 'react'
 import {
   Project, Session,
   listProjects, createProject, deleteProject,
@@ -10,79 +7,7 @@ import {
 } from '../../api/projects'
 import FileViewer from './FileViewer'
 import SessionStatsPanel from './SessionStats'
-
-// ── Terminal cache — one instance per processId, kept alive forever ──────────
-//
-// xterm.js Terminal.open(container) moves the terminal's DOM to a new container
-// without recreating the scrollback buffer. This lets us "switch" terminals by
-// just reattaching the cached instance to the single shared container div.
-
-type TermEntry = { term: Terminal; fit: FitAddon; ws: WebSocket }
-
-function useTerminalCache(
-  containerRef: React.RefObject<HTMLDivElement | null>,
-  processId: string | null,
-) {
-  const cache = useRef<Map<string, TermEntry>>(new Map())
-
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container || !processId) return
-
-    // Clear any terminal DOM previously attached to this container.
-    // xterm.js appends rather than replaces, so without this two terminals
-    // would stack on top of each other when switching sessions.
-    container.innerHTML = ''
-
-    const existing = cache.current.get(processId)
-    if (existing) {
-      // Reattach cached terminal — scrollback and running process preserved
-      existing.term.open(container)
-      setTimeout(() => existing.fit.fit(), 16)
-      const ro = new ResizeObserver(() => existing.fit.fit())
-      ro.observe(container)
-      return () => ro.disconnect()
-    }
-
-    // First time seeing this processId — create terminal + WebSocket
-    const term = new Terminal({
-      theme: { background: '#0d1117', foreground: '#e6edf3', cursor: '#58a6ff' },
-      fontFamily: 'monospace',
-      fontSize: 13,
-      cursorBlink: true,
-      scrollback: 5000,
-    })
-    const fit = new FitAddon()
-    term.loadAddon(fit)
-    term.open(container)
-    fit.fit()
-
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${proto}//${window.location.host}/api/terminal/${processId}`)
-    ws.binaryType = 'arraybuffer'
-    ws.onmessage = (e) => {
-      const data = e.data instanceof ArrayBuffer
-        ? new TextDecoder().decode(e.data)
-        : e.data as string
-      term.write(data)
-    }
-    ws.onclose = () => {
-      // Process exited — remove from cache so next spawn creates a fresh terminal
-      cache.current.delete(processId)
-      term.write('\r\n[Process exited — create a new session to restart]\r\n')
-    }
-    term.onData((data) => ws.readyState === WebSocket.OPEN && ws.send(data))
-
-    cache.current.set(processId, { term, fit, ws })
-
-    const ro = new ResizeObserver(() => fit.fit())
-    ro.observe(container)
-    // Only disconnect the resize observer on cleanup — keep terminal + WS alive
-    return () => ro.disconnect()
-  }, [processId, containerRef])
-}
-
-// FileBrowserPanel replaced by FileViewer component (imported above)
+import { TerminalPanel } from './terminal/TerminalPanel'
 
 // ── Main workspace ────────────────────────────────────────────────────────────
 
@@ -91,7 +16,9 @@ export default function WorkspaceApp() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeProject, setActiveProject] = useState<Project | null>(null)
   const [activeSession, setActiveSession] = useState<Session | null>(null)
-  const [processId, setProcessId] = useState<string | null>(null)
+  // Grove pattern: keep ALL seen processIds in DOM, show active via visibility:hidden
+  const [liveProcessIds, setLiveProcessIds] = useState<Set<string>>(new Set())
+  const [activeProcessId, setActiveProcessId] = useState<string | null>(null)
   const [rightPanel, setRightPanel] = useState<'files' | 'stats' | null>(null)
 
   // New Project modal
@@ -110,10 +37,6 @@ export default function WorkspaceApp() {
   const [newSessionName, setNewSessionName] = useState('')
   const [sessionError, setSessionError] = useState('')
 
-  const termContainerRef = useRef<HTMLDivElement>(null)
-
-  useTerminalCache(termContainerRef, processId)
-
   useEffect(() => {
     listProjects()
       .then(ps => {
@@ -126,7 +49,7 @@ export default function WorkspaceApp() {
   async function selectProject(p: Project) {
     setActiveProject(p)
     setActiveSession(null)
-    setProcessId(null)
+    setActiveProcessId(null)
     const ss = await listSessions(p.id).catch(() => [] as Session[])
     setSessions(ss)
     if (ss.length > 0) selectSession(p, ss[0])
@@ -134,10 +57,16 @@ export default function WorkspaceApp() {
 
   async function selectSession(p: Project, s: Session) {
     setActiveSession(s)
-    setProcessId(null)
     try {
       const { processId: pid } = await spawnTerminal(p.id, s.id)
-      setProcessId(pid)
+      setActiveProcessId(pid)
+      // Register processId as live — TerminalPanel keeps it in DOM with visibility:hidden
+      setLiveProcessIds(prev => {
+        if (prev.has(pid)) return prev
+        const next = new Set(prev)
+        next.add(pid)
+        return next
+      })
     } catch (e) {
       console.error('spawnTerminal:', e)
     }
@@ -150,7 +79,8 @@ export default function WorkspaceApp() {
       if (activeProject?.id === id) {
         setActiveProject(null)
         setActiveSession(null)
-        setProcessId(null)
+        setActiveProcessId(null)
+        setLiveProcessIds(new Set())
         setRightPanel(null)
       }
     } catch (e) { console.error('deleteProject:', e) }
@@ -162,7 +92,14 @@ export default function WorkspaceApp() {
       setSessions(ss => ss.filter(s => s.id !== sessionId))
       if (activeSession?.id === sessionId) {
         setActiveSession(null)
-        setProcessId(null)
+        setActiveProcessId(null)
+        // Clean up the terminal buffer from the registry
+        const reg = (window as any).__terminalRegistry
+        if (reg) {
+          // The processId for this session is in liveProcessIds — find and clean it up
+          reg.buffers.delete(activeProcessId)
+          reg.terminals.delete(activeProcessId)
+        }
         setRightPanel(null)
       }
     } catch (e) { console.error('deleteSession:', e) }
@@ -344,12 +281,20 @@ export default function WorkspaceApp() {
               </div>
             )}
 
-            {/* Terminal — always in DOM, hidden until a session's process is ready */}
-            <div
-              ref={termContainerRef}
-              className="absolute inset-0"
-              style={{ visibility: (activeProject && activeSession && processId) ? 'visible' : 'hidden' }}
-            />
+            {/* One TerminalPanel per live processId — grove pattern: visibility:hidden keeps them alive */}
+            {Array.from(liveProcessIds).map(pid => (
+              <div
+                key={pid}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  visibility: pid === activeProcessId ? 'visible' : 'hidden',
+                  pointerEvents: pid === activeProcessId ? 'auto' : 'none',
+                }}
+              >
+                <TerminalPanel processId={pid} />
+              </div>
+            ))}
           </div>
         </div>
 

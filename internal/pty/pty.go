@@ -87,6 +87,17 @@ func (m *Manager) IsAlive(id string) bool {
 	return ok
 }
 
+// Resize sends a SIGWINCH to the PTY so the running process reflows its display.
+func (m *Manager) Resize(id string, cols, rows uint16) error {
+	m.mu.Lock()
+	p, ok := m.procs[id]
+	m.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("process %s not found", id)
+	}
+	return creackpty.Setsize(p.ptm, &creackpty.Winsize{Cols: cols, Rows: rows})
+}
+
 // Kill terminates the process and removes it from both maps.
 func (m *Manager) Kill(id string) error {
 	m.mu.Lock()

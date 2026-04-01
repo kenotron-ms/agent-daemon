@@ -171,6 +171,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Terminal
 	mux.HandleFunc("POST /api/projects/{id}/sessions/{sid}/terminal", s.spawnTerminal)
 	mux.HandleFunc("/api/terminal/{processId}", s.handleTerminalWS)
+	mux.HandleFunc("POST /api/terminal/{processId}/resize", s.resizeTerminal)
 
 	// Files + Stats
 	mux.HandleFunc("GET /api/projects/{id}/sessions/{sid}/files", s.listFiles)
