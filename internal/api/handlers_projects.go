@@ -1,11 +1,15 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
+	"github.com/ms/amplifier-app-loom/internal/amplifier"
 	"github.com/ms/amplifier-app-loom/internal/files"
 )
 
@@ -172,6 +176,16 @@ func (s *Server) spawnTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 	s.workspaceStore.UpdateSessionStatus(r.Context(), sid, "active", &processID) //nolint:errcheck
 	writeJSON(w, http.StatusOK, map[string]string{"processId": processID})
+
+	// Start the amplifier session-name watcher exactly once per loom session.
+	// It polls ~/.amplifier/.../sessions/*/metadata.json and renames the loom
+	// session when amplifier's auto-naming hook fires.
+	if _, loaded := s.watchedSessions.LoadOrStore(sid, struct{}{}); !loaded {
+		go func() {
+			defer s.watchedSessions.Delete(sid)
+			s.watchAmplifierName(sid, sess.WorktreePath)
+		}()
+	}
 }
 
 func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
@@ -239,4 +253,39 @@ func (s *Server) getSessionStats(w http.ResponseWriter, r *http.Request) {
 		"tokens": 0,
 		"tools":  0,
 	})
+}
+
+// watchAmplifierName polls ~/.amplifier/.../sessions/*/metadata.json for the
+// project at worktreePath and renames the loom session whenever amplifier's
+// auto-naming hook fires. Exits when the loom session is deleted.
+func (s *Server) watchAmplifierName(sessionID, worktreePath string) {
+	// Give amplifier a moment to create its own session record.
+	time.Sleep(4 * time.Second)
+
+	after := time.Now().Add(-6 * time.Second) // include sessions started just before us
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	ctx := context.Background()
+
+	for range ticker.C {
+		// Stop if the loom session has been deleted.
+		sess, err := s.workspaceStore.GetSession(ctx, sessionID)
+		if err != nil {
+			return
+		}
+
+		meta, err := amplifier.NewestSession(worktreePath, after)
+		if err != nil || meta == nil || meta.Name == "" {
+			continue
+		}
+		if meta.Name == sess.Name {
+			continue // already up to date
+		}
+		if err := s.workspaceStore.RenameSession(ctx, sessionID, meta.Name); err != nil {
+			slog.Debug("watchAmplifierName: rename failed", "session", sessionID, "err", err)
+		} else {
+			slog.Info("session renamed from amplifier hook",
+				"session", sessionID, "name", meta.Name)
+		}
+	}
 }

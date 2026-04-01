@@ -30,8 +30,9 @@ type Server struct {
 	httpSrv     *http.Server
 	mirrorStore    *mirror.MirrorStore
 	syncEngine     *mirror.SyncEngine
-	workspaceStore *workspaces.Service
-	ptyMgr         *loompty.Manager
+	workspaceStore  *workspaces.Service
+	ptyMgr          *loompty.Manager
+	watchedSessions sync.Map // sessionID → struct{}: tracks in-flight name watchers
 	muxOnce        sync.Once
 	mux            *http.ServeMux
 }

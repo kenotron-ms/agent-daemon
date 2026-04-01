@@ -236,6 +236,27 @@ func (s *Service) ListSessions(_ context.Context, projectID string) ([]*Session,
 	return sessions, err
 }
 
+// RenameSession updates the display name of a session (used when the amplifier
+// session-naming hook fires and assigns a human-readable name).
+func (s *Service) RenameSession(_ context.Context, id, name string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		data := tx.Bucket(bucketSessions).Get([]byte(id))
+		if data == nil {
+			return fmt.Errorf("session %s not found", id)
+		}
+		var sess Session
+		if err := json.Unmarshal(data, &sess); err != nil {
+			return err
+		}
+		sess.Name = name
+		updated, err := json.Marshal(sess)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(bucketSessions).Put([]byte(id), updated)
+	})
+}
+
 func (s *Service) UpdateSessionStatus(_ context.Context, id, status string, processID *string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		data := tx.Bucket(bucketSessions).Get([]byte(id))

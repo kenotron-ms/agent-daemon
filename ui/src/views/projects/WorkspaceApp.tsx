@@ -40,6 +40,22 @@ export default function WorkspaceApp() {
       .catch(console.error)
   }, [])
 
+  // Poll session names every 5 s — picks up amplifier's auto-naming hook
+  useEffect(() => {
+    if (!activeProject) return
+    const id = setInterval(async () => {
+      const ss = await listSessions(activeProject.id).catch(() => null)
+      if (!ss) return
+      setSessions(ss)
+      setActiveSession(prev => {
+        if (!prev) return prev
+        const updated = ss.find(s => s.id === prev.id)
+        return updated && updated.name !== prev.name ? updated : prev
+      })
+    }, 5_000)
+    return () => clearInterval(id)
+  }, [activeProject?.id])
+
   async function selectProject(p: Project) {
     setActiveProject(p)
     setActiveSession(null)
