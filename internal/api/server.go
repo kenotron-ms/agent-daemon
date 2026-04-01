@@ -176,6 +176,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{id}/sessions/{sid}/files", s.listFiles)
 	mux.HandleFunc("GET /api/projects/{id}/sessions/{sid}/files/{path...}", s.readFile)
 	mux.HandleFunc("GET /api/projects/{id}/sessions/{sid}/stats", s.getSessionStats)
+
+	// Native OS filesystem dialog (macOS: osascript; other platforms: unsupported)
+	mux.HandleFunc("GET /api/filesystem/pick-folder", s.pickFolder)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

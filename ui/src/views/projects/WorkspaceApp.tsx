@@ -6,6 +6,7 @@ import {
   Project, Session, FileEntry,
   listProjects, createProject,
   listSessions, createSession, spawnTerminal, listFiles,
+  pickFolder, canPickFolder,
 } from '../../api/projects'
 
 // ── Terminal hook ─────────────────────────────────────────────────────────────
@@ -122,6 +123,12 @@ export default function WorkspaceApp() {
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectPath, setNewProjectPath] = useState('')
+  const [pathPickerSupported, setPathPickerSupported] = useState<boolean | null>(null)
+
+  // Probe once on mount whether the native folder picker is available (no dialog opens)
+  useEffect(() => {
+    canPickFolder().then(setPathPickerSupported).catch(() => setPathPickerSupported(false))
+  }, [])
 
   // New Session modal
   const [showNewSession, setShowNewSession] = useState(false)
@@ -158,6 +165,15 @@ export default function WorkspaceApp() {
       setProcessId(pid)
     } catch (e) {
       console.error('spawnTerminal:', e)
+    }
+  }
+
+  async function handleBrowse() {
+    try {
+      const result = await pickFolder()
+      if (result.path) setNewProjectPath(result.path)
+    } catch (e) {
+      console.error('pickFolder:', e)
     }
   }
 
@@ -318,13 +334,24 @@ export default function WorkspaceApp() {
               onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
               autoFocus
             />
-            <input
-              className="w-full mb-4 px-3 py-1.5 text-sm bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
-              placeholder="/absolute/path/to/codebase"
-              value={newProjectPath}
-              onChange={e => setNewProjectPath(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
-            />
+            <div className="flex gap-2 mb-4">
+              <input
+                className="flex-1 px-3 py-1.5 text-sm bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
+                placeholder="/absolute/path/to/codebase"
+                value={newProjectPath}
+                onChange={e => setNewProjectPath(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
+              />
+              {pathPickerSupported && (
+                <button
+                  onClick={handleBrowse}
+                  type="button"
+                  className="px-3 py-1.5 text-xs bg-[#21262d] border border-[#30363d] rounded text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] shrink-0"
+                >
+                  Browse…
+                </button>
+              )}
+            </div>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowNewProject(false)}
