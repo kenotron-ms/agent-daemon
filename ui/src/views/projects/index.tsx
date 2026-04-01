@@ -1,3 +1,6 @@
+import WorkspaceApp from './WorkspaceApp'
+
+// Auth is disabled in loom — render WorkspaceApp directly
 export default function ProjectsView() {
-  return <div className="p-8 text-[#8b949e]">Projects — coming soon</div>
+  return <WorkspaceApp />
 }

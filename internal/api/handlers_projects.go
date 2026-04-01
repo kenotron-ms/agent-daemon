@@ -60,6 +60,10 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
 	p, err := s.workspaceStore.UpdateProject(r.Context(), id, req.Name)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
@@ -107,6 +111,10 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.WorktreePath == "" {
 		writeError(w, http.StatusBadRequest, "worktreePath is required")
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 	// create git worktree if directory doesn't exist

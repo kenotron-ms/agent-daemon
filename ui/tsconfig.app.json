@@ -16,5 +16,11 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/shell-integration",
+    "src/settings",
+    "src/vendor",
+    "src/vite-env.d.ts"
+  ]
 }

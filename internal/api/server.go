@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ms/amplifier-app-loom/internal/config"
-	"github.com/ms/amplifier-app-loom/internal/files"
 	"github.com/ms/amplifier-app-loom/internal/mirror"
 	"github.com/ms/amplifier-app-loom/internal/nl"
 	loompty "github.com/ms/amplifier-app-loom/internal/pty"
@@ -33,7 +32,8 @@ type Server struct {
 	syncEngine     *mirror.SyncEngine
 	workspaceStore *workspaces.Service
 	ptyMgr         *loompty.Manager
-	fileBrowser    *files.Browser
+	muxOnce        sync.Once
+	mux            *http.ServeMux
 }
 
 func NewServer(cfg *config.Config, s store.Store, sched *scheduler.Scheduler, q *queue.BoundedQueue, startedAt time.Time, b *scheduler.Broadcaster) *Server {
@@ -56,18 +56,19 @@ func (s *Server) SetMirror(ms *mirror.MirrorStore, se *mirror.SyncEngine) {
 	s.syncEngine = se
 }
 
-// SetWorkspaces wires the workspace subsystem (projects, PTY, files) into the server.
-func (s *Server) SetWorkspaces(ws *workspaces.Service, mgr *loompty.Manager, fb *files.Browser) {
+// SetWorkspaces wires the workspace subsystem (projects, PTY) into the server.
+func (s *Server) SetWorkspaces(ws *workspaces.Service, mgr *loompty.Manager) {
 	s.workspaceStore = ws
 	s.ptyMgr = mgr
-	s.fileBrowser = fb
 }
 
 // ServeHTTP implements http.Handler for use in tests.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	mux := http.NewServeMux()
-	s.registerRoutes(mux)
-	mux.ServeHTTP(w, r)
+	s.muxOnce.Do(func() {
+		s.mux = http.NewServeMux()
+		s.registerRoutes(s.mux)
+	})
+	s.mux.ServeHTTP(w, r)
 }
 
 func (s *Server) reinitNLClient() {
