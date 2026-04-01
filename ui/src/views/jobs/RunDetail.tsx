@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Convert from 'ansi-to-html'
 import { Job, JobRun, listJobRuns, triggerJob } from '../../api/jobs'
 import { useRunStream } from './useRunStream'
+
+// newline:false — <pre> with whitespace-pre-wrap already renders \n as line breaks
+const ansiConvert = new Convert({ escapeXML: true, newline: false })
 
 interface Props {
   job: Job
@@ -10,6 +14,7 @@ export default function RunDetail({ job }: Props) {
   const [runs, setRuns] = useState<JobRun[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const logOutput = useRunStream(activeRunId)
+  const logHtml = useMemo(() => ansiConvert.toHtml(logOutput), [logOutput])
 
   const refreshRuns = async (jobId: string) => {
     try {
@@ -86,10 +91,13 @@ export default function RunDetail({ job }: Props) {
         </div>
       )}
 
-      {/* Log output — use <pre> so \n inside chunks renders as line breaks */}
+      {/* Log output — ANSI colour codes converted to HTML spans */}
       <div className="flex-1 overflow-y-auto bg-[#0d1117] p-4">
         {logOutput
-          ? <pre className="font-mono text-[11px] text-[#e6edf3] whitespace-pre-wrap leading-relaxed m-0">{logOutput}</pre>
+          ? <pre
+              className="font-mono text-[11px] text-[#e6edf3] whitespace-pre-wrap leading-relaxed m-0"
+              dangerouslySetInnerHTML={{ __html: logHtml }}
+            />
           : <span className="font-mono text-[11px] text-[#8b949e]">No output yet — click ▶ Run Now to trigger a run.</span>
         }
       </div>
