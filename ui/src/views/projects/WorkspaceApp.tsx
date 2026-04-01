@@ -27,10 +27,7 @@ export default function WorkspaceApp() {
   const [newProjectPath, setNewProjectPath] = useState('')
   const canBrowse = 'showDirectoryPicker' in window
 
-  // New Session modal
-  const [showNewSession, setShowNewSession] = useState(false)
-  const [newSessionName, setNewSessionName] = useState('')
-  const [sessionError, setSessionError] = useState('')
+  const [creatingSession, setCreatingSession] = useState(false)
 
   useEffect(() => {
     listProjects()
@@ -158,17 +155,16 @@ export default function WorkspaceApp() {
   }
 
   async function handleCreateSession() {
-    if (!activeProject || !newSessionName) return
-    setSessionError('')
+    if (!activeProject || creatingSession) return
+    setCreatingSession(true)
     try {
-      const s = await createSession(activeProject.id, newSessionName)
+      const s = await createSession(activeProject.id, '')
       setSessions(ss => [...ss, s])
-      setShowNewSession(false)
-      setNewSessionName('')
       selectSession(activeProject, s)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setSessionError(msg)
+      console.error('createSession:', e)
+    } finally {
+      setCreatingSession(false)
     }
   }
 
@@ -217,10 +213,11 @@ export default function WorkspaceApp() {
             <div className="flex items-center justify-between px-3 py-2 border-t border-b border-[#30363d]">
               <span className="text-[#8b949e] text-[10px] uppercase tracking-wider">Sessions</span>
               <button
-                onClick={() => { setShowNewSession(true); setSessionError('') }}
-                className="text-[#58a6ff] text-xs hover:text-[#e6edf3]"
+                onClick={handleCreateSession}
+                disabled={creatingSession}
+                className="text-[#58a6ff] text-xs hover:text-[#e6edf3] disabled:opacity-40"
                 aria-label="New session"
-              >+</button>
+              >{creatingSession ? '…' : '+'}</button>
             </div>
             {sessions.length === 0 && (
               <div className="px-3 py-2 text-[10px] text-[#484f58]">No sessions yet</div>
@@ -290,10 +287,11 @@ export default function WorkspaceApp() {
                     <div className="text-sm font-medium text-[#e6edf3] mb-1">{activeProject.name}</div>
                     <div className="text-xs mb-3 text-[#484f58]">{activeProject.path}</div>
                     <button
-                      onClick={() => { setShowNewSession(true); setSessionError('') }}
-                      className="text-xs px-3 py-1.5 bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d]"
+                      onClick={handleCreateSession}
+                      disabled={creatingSession}
+                      className="text-xs px-3 py-1.5 bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d] disabled:opacity-40"
                     >
-                      + New Session
+                      {creatingSession ? 'Starting…' : '+ New Session'}
                     </button>
                   </div>
                 ) : (
@@ -380,40 +378,7 @@ export default function WorkspaceApp() {
         </div>
       )}
 
-      {/* New Session modal */}
-      {showNewSession && activeProject && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-5 w-80">
-            <h3 className="text-sm font-semibold text-[#e6edf3] mb-1">New Session</h3>
-            <p className="text-[10px] text-[#484f58] mb-4">
-              Opens a terminal in <span className="text-[#8b949e]">{activeProject.path}</span>
-            </p>
-            <input
-              className="w-full mb-2 px-3 py-1.5 text-sm bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
-              placeholder="Session name (e.g. main, debug, review)"
-              value={newSessionName}
-              onChange={e => { setNewSessionName(e.target.value); setSessionError('') }}
-              onKeyDown={e => e.key === 'Enter' && handleCreateSession()}
-              autoFocus
-            />
-            {sessionError && (
-              <div className="text-[10px] text-[#f85149] bg-[#3a1a1a] rounded px-2 py-1 mb-2">
-                {sessionError}
-              </div>
-            )}
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => { setShowNewSession(false); setNewSessionName(''); setSessionError('') }}
-                className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3]"
-              >Cancel</button>
-              <button
-                onClick={handleCreateSession}
-                className="px-3 py-1.5 text-xs bg-[#238636] hover:bg-[#2ea043] text-white rounded"
-              >Create Session</button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   )
 }

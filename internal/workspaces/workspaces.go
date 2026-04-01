@@ -28,13 +28,14 @@ type Project struct {
 
 // Session is a git worktree within a project, backed by a persistent PTY process.
 type Session struct {
-	ID           string  `json:"id"`
-	ProjectID    string  `json:"projectId"`
-	Name         string  `json:"name"`         // e.g. branch name
-	WorktreePath string  `json:"worktreePath"` // absolute path to git worktree
-	ProcessID    *string `json:"processId"`    // nil when no PTY is running
-	CreatedAt    int64   `json:"createdAt"`
-	Status       string  `json:"status"` // "idle" | "active" | "stopped"
+	ID                 string  `json:"id"`
+	ProjectID          string  `json:"projectId"`
+	Name               string  `json:"name"`               // e.g. branch name, then auto-renamed by amplifier hook
+	WorktreePath       string  `json:"worktreePath"`       // absolute path to git worktree
+	ProcessID          *string `json:"processId"`          // nil when no PTY is running
+	CreatedAt          int64   `json:"createdAt"`
+	Status             string  `json:"status"`             // "idle" | "active" | "stopped"
+	AmplifierSessionID string  `json:"amplifierSessionId,omitempty"` // captured after first spawn
 }
 
 // Service is the workspace CRUD layer backed by bbolt.
@@ -249,6 +250,27 @@ func (s *Service) RenameSession(_ context.Context, id, name string) error {
 			return err
 		}
 		sess.Name = name
+		updated, err := json.Marshal(sess)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(bucketSessions).Put([]byte(id), updated)
+	})
+}
+
+// SetAmplifierSessionID stores the amplifier session UUID that was spawned for this
+// loom session. Called once after the first fresh amplifier run.
+func (s *Service) SetAmplifierSessionID(_ context.Context, id, ampID string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		data := tx.Bucket(bucketSessions).Get([]byte(id))
+		if data == nil {
+			return fmt.Errorf("session %s not found", id)
+		}
+		var sess Session
+		if err := json.Unmarshal(data, &sess); err != nil {
+			return err
+		}
+		sess.AmplifierSessionID = ampID
 		updated, err := json.Marshal(sess)
 		if err != nil {
 			return err

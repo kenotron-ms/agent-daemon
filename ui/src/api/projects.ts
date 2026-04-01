@@ -14,6 +14,7 @@ export interface Session {
   processId: string | null
   createdAt: number
   status: 'idle' | 'active' | 'stopped'
+  amplifierSessionId?: string  // set after first spawn, used for --resume
 }
 
 export interface FileEntry {
