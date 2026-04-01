@@ -4,7 +4,7 @@ MODULE   = github.com/ms/amplifier-app-loom
 VERSION  = 0.6.0
 LDFLAGS  = -ldflags "-X $(MODULE)/internal/api.Version=$(VERSION) -s -w"
 
-.PHONY: build run install-svc uninstall-svc test clean cross ui
+.PHONY: build run install-svc uninstall-svc test clean cross ui release
 
 ui:
 	cd ui && npm install && npm run build
@@ -42,3 +42,31 @@ cross: ui $(DIST)
 	CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64  go build $(LDFLAGS) -o $(DIST)/$(BINARY)-darwin-arm64  ./cmd/loom/
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64  go build $(LDFLAGS) -o $(DIST)/$(BINARY)-windows-amd64.exe ./cmd/loom/
 	ls -lh $(DIST)/
+
+# Cut a full release: cross-compile → checksums → git tag → GitHub Release
+# Usage: make release VERSION=1.2.3
+release: cross
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=x.y.z"; exit 1; fi
+	@echo "--- Generating checksums ---"
+	cd $(DIST) && shasum -a 256 \
+		$(BINARY)-linux-amd64 \
+		$(BINARY)-linux-arm64 \
+		$(BINARY)-darwin-amd64 \
+		$(BINARY)-darwin-arm64 \
+		$(BINARY)-windows-amd64.exe \
+		> checksums.txt
+	cat $(DIST)/checksums.txt
+	@echo "--- Tagging v$(VERSION) ---"
+	git tag v$(VERSION)
+	git push origin v$(VERSION)
+	@echo "--- Creating GitHub Release ---"
+	gh release create v$(VERSION) \
+		$(DIST)/$(BINARY)-linux-amd64 \
+		$(DIST)/$(BINARY)-linux-arm64 \
+		$(DIST)/$(BINARY)-darwin-amd64 \
+		$(DIST)/$(BINARY)-darwin-arm64 \
+		$(DIST)/$(BINARY)-windows-amd64.exe \
+		$(DIST)/checksums.txt \
+		--title "v$(VERSION)" \
+		--generate-notes
+	@echo "--- Done: https://github.com/$(shell git remote get-url origin | sed 's/.*github.com\///;s/\.git//') ---"

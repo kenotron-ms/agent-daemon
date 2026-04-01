@@ -7,42 +7,32 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/ncruces/zenity"
 )
 
-// pickFolder opens a native directory picker by invoking the zenity binary directly.
-// No Go wrapper, no AppleScript — just exec.Command("zenity", "--file-selection", "--directory").
+// pickFolder opens the native OS directory picker via the ncruces/zenity library.
 //
 // GET /api/filesystem/pick-folder         — open the dialog
-// GET /api/filesystem/pick-folder?check=1 — probe: returns {supported: true/false}
+// GET /api/filesystem/pick-folder?check=1 — probe availability without opening
 func (s *Server) pickFolder(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("check") != "" {
-		_, err := exec.LookPath("zenity")
-		writeJSON(w, http.StatusOK, map[string]any{"supported": err == nil})
+		writeJSON(w, http.StatusOK, map[string]any{"supported": true})
 		return
 	}
-
-	zenityPath, err := exec.LookPath("zenity")
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "zenity not found — install it first")
-		return
-	}
-
-	cmd := exec.CommandContext(r.Context(), zenityPath,
-		"--file-selection",
-		"--directory",
-		"--title=Select Project Folder",
+	path, err := zenity.SelectFile(
+		zenity.Title("Select Project Folder"),
+		zenity.Directory(),
+		zenity.Context(r.Context()),
 	)
-	out, err := cmd.Output()
+	if err == zenity.ErrCanceled {
+		writeJSON(w, http.StatusOK, map[string]any{"cancelled": true})
+		return
+	}
 	if err != nil {
-		// exit code 1 = user cancelled
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			writeJSON(w, http.StatusOK, map[string]any{"cancelled": true})
-			return
-		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	path := strings.TrimRight(string(out), "\r\n")
 	writeJSON(w, http.StatusOK, map[string]any{"path": path})
 }
 

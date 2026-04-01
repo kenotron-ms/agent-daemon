@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -169,8 +171,11 @@ func (s *Server) spawnTerminal(w http.ResponseWriter, r *http.Request) {
 	// Key by session ID — each session gets its own independent shell process.
 	// Clicking the same session multiple times reuses the same PTY (dedup by session ID).
 	key := sess.ID
-	// Resume the paired amplifier session if one is stored; otherwise start fresh.
-	ampCmd := []string{"amplifier", "run", "--mode", "chat"}
+	// Resolve amplifier binary — app bundles/services run with restricted PATH
+	// that often doesn't include ~/.local/bin where uv/pip install tools.
+	ampBin := resolveAmplifier()
+
+	ampCmd := []string{ampBin, "run", "--mode", "chat"}
 	if sess.AmplifierSessionID != "" {
 		ampCmd = append(ampCmd, "--resume", sess.AmplifierSessionID)
 	}
@@ -296,4 +301,28 @@ func (s *Server) watchSession(sessionID, worktreePath string) {
 				"session", sessionID, "name", meta.Name)
 		}
 	}
+}
+
+// resolveAmplifier finds the amplifier binary. GUI apps and launchd services
+// inherit a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin) that misses user-installed
+// tools in ~/.local/bin. We probe the common install locations explicitly.
+func resolveAmplifier() string {
+	// 1. Standard PATH lookup first (works in shell-launched contexts)
+	if p, err := exec.LookPath("amplifier"); err == nil {
+		return p
+	}
+	// 2. Common user-install locations (uv tool install, pip install --user, brew)
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(home, ".local", "bin", "amplifier"),
+		"/usr/local/bin/amplifier",
+		"/opt/homebrew/bin/amplifier",
+		filepath.Join(home, "go", "bin", "amplifier"),
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return "amplifier" // let Spawn fail with a clear error
 }
