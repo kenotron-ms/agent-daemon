@@ -13,7 +13,6 @@ import (
 
 	"github.com/ms/amplifier-app-loom/internal/api"
 	"github.com/ms/amplifier-app-loom/internal/config"
-	"github.com/ms/amplifier-app-loom/internal/files"
 	loompty "github.com/ms/amplifier-app-loom/internal/pty"
 	"github.com/ms/amplifier-app-loom/internal/store"
 	"github.com/ms/amplifier-app-loom/internal/workspaces"
@@ -35,6 +34,7 @@ func newTestServer(t *testing.T) *api.Server {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
+	t.Cleanup(func() { boltStore.Close() })
 
 	ws, err := workspaces.New(wsDB)
 	if err != nil {
@@ -43,8 +43,38 @@ func newTestServer(t *testing.T) *api.Server {
 
 	cfg := &config.Config{}
 	srv := api.NewServer(cfg, boltStore, nil, nil, time.Now(), nil)
-	srv.SetWorkspaces(ws, loompty.NewManager(), files.New(t.TempDir()))
+	srv.SetWorkspaces(ws, loompty.NewManager())
 	return srv
+}
+
+func TestDeleteProject(t *testing.T) {
+	srv := newTestServer(t)
+
+	body := `{"name":"proj","path":"/tmp/proj"}`
+	req := httptest.NewRequest("POST", "/api/projects", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", w.Code)
+	}
+	var p map[string]any
+	json.NewDecoder(w.Body).Decode(&p)
+	id := p["id"].(string)
+
+	req2 := httptest.NewRequest("DELETE", "/api/projects/"+id, nil)
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusNoContent {
+		t.Fatalf("delete: expected 204, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	req3 := httptest.NewRequest("GET", "/api/projects/"+id, nil)
+	w3 := httptest.NewRecorder()
+	srv.ServeHTTP(w3, req3)
+	if w3.Code != http.StatusNotFound {
+		t.Fatalf("get after delete: expected 404, got %d", w3.Code)
+	}
 }
 
 func TestCreateAndListProjects(t *testing.T) {
