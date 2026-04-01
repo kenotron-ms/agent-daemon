@@ -45,3 +45,23 @@ func TestSpawnDeduplicated(t *testing.T) {
 
 	mgr.Kill(id1)
 }
+
+func TestNaturalExit(t *testing.T) {
+	mgr := loompty.NewManager()
+
+	// spawn a shell that exits immediately
+	id, err := mgr.Spawn("exit-proc", t.TempDir(), []string{"/bin/sh", "-c", "exit 0"})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	// wait for the reaper goroutine
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !mgr.IsAlive(id) {
+			return // success
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("expected process to be reaped after natural exit")
+}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	creackpty "github.com/creack/pty"
 	"github.com/gorilla/websocket"
@@ -22,17 +23,13 @@ type Process struct {
 // Processes survive tab switches — they are only removed when killed or
 // when the underlying process exits naturally.
 type Manager struct {
-	mu      sync.Mutex
-	procs   map[string]*Process // id → process
-	keyToID map[string]string   // stable key → id
+	mu    sync.Mutex
+	procs map[string]*Process // key → process (key is also the process ID)
 }
 
 // NewManager returns an initialised Manager.
 func NewManager() *Manager {
-	return &Manager{
-		procs:   make(map[string]*Process),
-		keyToID: make(map[string]string),
-	}
+	return &Manager{procs: make(map[string]*Process)}
 }
 
 // Spawn starts a PTY process for key in workDir running argv.
@@ -42,12 +39,9 @@ func (m *Manager) Spawn(key, workDir string, argv []string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// return existing live process if present
-	if id, ok := m.keyToID[key]; ok {
-		if _, alive := m.procs[id]; alive {
-			return id, nil
-		}
-		delete(m.keyToID, key)
+	if _, ok := m.procs[key]; ok {
+		// process is still alive (reaper removes it from the map on exit)
+		return key, nil
 	}
 
 	cmd := exec.Command(argv[0], argv[1:]...)
@@ -59,20 +53,18 @@ func (m *Manager) Spawn(key, workDir string, argv []string) (string, error) {
 		return "", fmt.Errorf("pty start: %w", err)
 	}
 
-	id := key
-	proc := &Process{ID: id, ptm: ptm, cmd: cmd}
-	m.procs[id] = proc
-	m.keyToID[key] = id
+	proc := &Process{ID: key, ptm: ptm, cmd: cmd}
+	m.procs[key] = proc
 
 	// reap when process exits naturally
 	go func() {
 		cmd.Wait() //nolint:errcheck
 		m.mu.Lock()
-		delete(m.procs, id)
+		delete(m.procs, key)
 		m.mu.Unlock()
 	}()
 
-	return id, nil
+	return key, nil
 }
 
 // IsAlive reports whether a process with the given ID is running.
@@ -94,7 +86,6 @@ func (m *Manager) Kill(id string) error {
 	delete(m.procs, id)
 	m.mu.Unlock()
 
-	// Kill the underlying OS process, then close the PTY master.
 	if p.cmd.Process != nil {
 		p.cmd.Process.Kill() //nolint:errcheck
 	}
@@ -117,6 +108,9 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request, processID stri
 		http.Error(w, "process not found", http.StatusNotFound)
 		return
 	}
+
+	// Ensure the PTY reader goroutine exits when this handler returns.
+	defer p.ptm.SetReadDeadline(time.Now()) //nolint:errcheck
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -149,5 +143,3 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request, processID stri
 		}
 	}
 }
-
-
