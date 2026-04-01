@@ -152,7 +152,9 @@ func (s *Server) spawnTerminal(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	key := sess.ProjectID + "::" + sess.WorktreePath
+	// Key by session ID — each session gets its own independent shell process.
+	// Clicking the same session multiple times reuses the same PTY (dedup by session ID).
+	key := sess.ID
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/sh"

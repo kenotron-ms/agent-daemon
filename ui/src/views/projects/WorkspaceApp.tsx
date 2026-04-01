@@ -9,57 +9,74 @@ import {
   pickFolder, canPickFolder,
 } from '../../api/projects'
 
-// ── Terminal hook ─────────────────────────────────────────────────────────────
+// ── Terminal cache — one instance per processId, kept alive forever ──────────
+//
+// xterm.js Terminal.open(container) moves the terminal's DOM to a new container
+// without recreating the scrollback buffer. This lets us "switch" terminals by
+// just reattaching the cached instance to the single shared container div.
 
-function useTerminal(containerRef: React.RefObject<HTMLDivElement | null>, processId: string | null) {
-  const termRef = useRef<Terminal | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
-  const fitRef = useRef<FitAddon | null>(null)
+type TermEntry = { term: Terminal; fit: FitAddon; ws: WebSocket }
+
+function useTerminalCache(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  processId: string | null,
+) {
+  const cache = useRef<Map<string, TermEntry>>(new Map())
 
   useEffect(() => {
-    if (!containerRef.current) return
-    if (termRef.current) {
-      termRef.current.dispose()
-      termRef.current = null
+    const container = containerRef.current
+    if (!container || !processId) return
+
+    // Clear any terminal DOM previously attached to this container.
+    // xterm.js appends rather than replaces, so without this two terminals
+    // would stack on top of each other when switching sessions.
+    container.innerHTML = ''
+
+    const existing = cache.current.get(processId)
+    if (existing) {
+      // Reattach cached terminal — scrollback and running process preserved
+      existing.term.open(container)
+      setTimeout(() => existing.fit.fit(), 16)
+      const ro = new ResizeObserver(() => existing.fit.fit())
+      ro.observe(container)
+      return () => ro.disconnect()
     }
 
+    // First time seeing this processId — create terminal + WebSocket
     const term = new Terminal({
       theme: { background: '#0d1117', foreground: '#e6edf3', cursor: '#58a6ff' },
       fontFamily: 'monospace',
       fontSize: 13,
       cursorBlink: true,
+      scrollback: 5000,
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
-    term.open(containerRef.current)
+    term.open(container)
     fit.fit()
-    termRef.current = term
-    fitRef.current = fit
 
-    if (processId) {
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(`${proto}//${window.location.host}/api/terminal/${processId}`)
-      ws.binaryType = 'arraybuffer'
-      ws.onopen = () => term.write('\r\n\x1b[32m● connected\x1b[0m\r\n')
-      ws.onmessage = (e) => {
-        const data = e.data instanceof ArrayBuffer
-          ? new TextDecoder().decode(e.data)
-          : e.data as string
-        term.write(data)
-      }
-      ws.onclose = () => term.write('\r\n\x1b[31m● disconnected\x1b[0m\r\n')
-      term.onData((data) => ws.readyState === WebSocket.OPEN && ws.send(data))
-      wsRef.current = ws
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${proto}//${window.location.host}/api/terminal/${processId}`)
+    ws.binaryType = 'arraybuffer'
+    ws.onmessage = (e) => {
+      const data = e.data instanceof ArrayBuffer
+        ? new TextDecoder().decode(e.data)
+        : e.data as string
+      term.write(data)
     }
-
-    const resizeObserver = new ResizeObserver(() => fit.fit())
-    resizeObserver.observe(containerRef.current)
-
-    return () => {
-      resizeObserver.disconnect()
-      wsRef.current?.close()
-      term.dispose()
+    ws.onclose = () => {
+      // Process exited — remove from cache so next spawn creates a fresh terminal
+      cache.current.delete(processId)
+      term.write('\r\n[Process exited — create a new session to restart]\r\n')
     }
+    term.onData((data) => ws.readyState === WebSocket.OPEN && ws.send(data))
+
+    cache.current.set(processId, { term, fit, ws })
+
+    const ro = new ResizeObserver(() => fit.fit())
+    ro.observe(container)
+    // Only disconnect the resize observer on cleanup — keep terminal + WS alive
+    return () => ro.disconnect()
   }, [processId, containerRef])
 }
 
@@ -137,7 +154,7 @@ export default function WorkspaceApp() {
 
   const termContainerRef = useRef<HTMLDivElement>(null)
 
-  useTerminal(termContainerRef, processId)
+  useTerminalCache(termContainerRef, processId)
 
   useEffect(() => {
     listProjects()
@@ -272,46 +289,57 @@ export default function WorkspaceApp() {
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
-          {activeProject && activeSession ? (
-            <>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
-                <span className="text-xs text-[#e6edf3] font-medium">{activeProject.name}</span>
-                <span className="text-xs text-[#8b949e]">/ {activeSession.name}</span>
-                <button
-                  onClick={() => setShowFiles(!showFiles)}
-                  className="ml-auto text-[10px] px-2 py-0.5 rounded bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3]"
-                >
-                  {showFiles ? 'Hide Files' : 'Files'}
-                </button>
-              </div>
-              <div ref={termContainerRef} className="flex-1 overflow-hidden" />
-            </>
-          ) : activeProject ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center text-[#8b949e]">
-                <div className="text-sm font-medium text-[#e6edf3] mb-1">{activeProject.name}</div>
-                <div className="text-xs mb-3 text-[#484f58]">{activeProject.path}</div>
-                <button
-                  onClick={() => { setShowNewSession(true); setSessionError('') }}
-                  className="text-xs px-3 py-1.5 bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d]"
-                >
-                  + New Session
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center text-[#8b949e]">
-                <div className="text-sm mb-2">Select or create a project</div>
-                <button
-                  onClick={() => setShowNewProject(true)}
-                  className="text-xs px-3 py-1.5 bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d]"
-                >
-                  + New Project
-                </button>
-              </div>
+          {/* Session header — only shown when a session is active */}
+          {activeProject && activeSession && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
+              <span className="text-xs text-[#e6edf3] font-medium">{activeProject.name}</span>
+              <span className="text-xs text-[#8b949e]">/ {activeSession.name}</span>
+              <button
+                onClick={() => setShowFiles(!showFiles)}
+                className="ml-auto text-[10px] px-2 py-0.5 rounded bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3]"
+              >
+                {showFiles ? 'Hide Files' : 'Files'}
+              </button>
             </div>
           )}
+
+          {/* Content area — terminal container is ALWAYS in DOM so instances persist */}
+          <div className="flex-1 overflow-hidden relative">
+            {/* Empty state overlay — covers the (invisible) terminal when no session */}
+            {(!activeProject || !activeSession) && (
+              <div className="absolute inset-0 flex items-center justify-center z-10 bg-[#0d1117]">
+                {activeProject ? (
+                  <div className="text-center text-[#8b949e]">
+                    <div className="text-sm font-medium text-[#e6edf3] mb-1">{activeProject.name}</div>
+                    <div className="text-xs mb-3 text-[#484f58]">{activeProject.path}</div>
+                    <button
+                      onClick={() => { setShowNewSession(true); setSessionError('') }}
+                      className="text-xs px-3 py-1.5 bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d]"
+                    >
+                      + New Session
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center text-[#8b949e]">
+                    <div className="text-sm mb-2">Select or create a project</div>
+                    <button
+                      onClick={() => setShowNewProject(true)}
+                      className="text-xs px-3 py-1.5 bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d]"
+                    >
+                      + New Project
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Terminal — always in DOM, hidden until a session's process is ready */}
+            <div
+              ref={termContainerRef}
+              className="absolute inset-0"
+              style={{ visibility: (activeProject && activeSession && processId) ? 'visible' : 'hidden' }}
+            />
+          </div>
         </div>
 
         {showFiles && activeProject && activeSession && (
