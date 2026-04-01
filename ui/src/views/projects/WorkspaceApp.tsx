@@ -3,11 +3,13 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import {
-  Project, Session, FileEntry,
-  listProjects, createProject,
-  listSessions, createSession, spawnTerminal, listFiles,
+  Project, Session,
+  listProjects, createProject, deleteProject,
+  listSessions, createSession, deleteSession, spawnTerminal,
   pickFolder, canPickFolder,
 } from '../../api/projects'
+import FileViewer from './FileViewer'
+import SessionStatsPanel from './SessionStats'
 
 // ── Terminal cache — one instance per processId, kept alive forever ──────────
 //
@@ -80,51 +82,7 @@ function useTerminalCache(
   }, [processId, containerRef])
 }
 
-// ── File browser panel ────────────────────────────────────────────────────────
-
-function FileBrowserPanel({ projectId, sessionId }: { projectId: string; sessionId: string }) {
-  const [entries, setEntries] = useState<FileEntry[]>([])
-  const [path, setPath] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    setLoading(true)
-    listFiles(projectId, sessionId, path)
-      .then(setEntries)
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [projectId, sessionId, path])
-
-  return (
-    <div className="flex flex-col h-full bg-[#161b22] border-l border-[#30363d]">
-      <div className="px-3 py-2 border-b border-[#30363d] text-[10px] text-[#8b949e] uppercase tracking-wider">
-        Files {path && <span className="text-[#58a6ff]">/{path}</span>}
-      </div>
-      {path && (
-        <button
-          onClick={() => setPath(path.split('/').slice(0, -1).join('/'))}
-          className="px-3 py-1 text-xs text-[#8b949e] hover:text-[#e6edf3] text-left border-b border-[#21262d]"
-        >
-          ↑ ..
-        </button>
-      )}
-      <div className="flex-1 overflow-y-auto">
-        {loading && <div className="px-3 py-2 text-xs text-[#8b949e]">Loading…</div>}
-        {entries.map((e) => (
-          <button
-            key={e.name}
-            onClick={() => e.isDir && setPath(path ? `${path}/${e.name}` : e.name)}
-            className="w-full text-left px-3 py-1 text-xs hover:bg-[#21262d] transition-colors"
-          >
-            <span className={e.isDir ? 'text-[#58a6ff]' : 'text-[#e6edf3]'}>
-              {e.isDir ? '📁' : '📄'} {e.name}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
+// FileBrowserPanel replaced by FileViewer component (imported above)
 
 // ── Main workspace ────────────────────────────────────────────────────────────
 
@@ -134,7 +92,7 @@ export default function WorkspaceApp() {
   const [activeProject, setActiveProject] = useState<Project | null>(null)
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   const [processId, setProcessId] = useState<string | null>(null)
-  const [showFiles, setShowFiles] = useState(false)
+  const [rightPanel, setRightPanel] = useState<'files' | 'stats' | null>(null)
 
   // New Project modal
   const [showNewProject, setShowNewProject] = useState(false)
@@ -183,6 +141,31 @@ export default function WorkspaceApp() {
     } catch (e) {
       console.error('spawnTerminal:', e)
     }
+  }
+
+  async function handleDeleteProject(id: string) {
+    try {
+      await deleteProject(id)
+      setProjects(ps => ps.filter(p => p.id !== id))
+      if (activeProject?.id === id) {
+        setActiveProject(null)
+        setActiveSession(null)
+        setProcessId(null)
+        setRightPanel(null)
+      }
+    } catch (e) { console.error('deleteProject:', e) }
+  }
+
+  async function handleDeleteSession(projectId: string, sessionId: string) {
+    try {
+      await deleteSession(projectId, sessionId)
+      setSessions(ss => ss.filter(s => s.id !== sessionId))
+      if (activeSession?.id === sessionId) {
+        setActiveSession(null)
+        setProcessId(null)
+        setRightPanel(null)
+      }
+    } catch (e) { console.error('deleteSession:', e) }
   }
 
   async function handleBrowse() {
@@ -238,18 +221,27 @@ export default function WorkspaceApp() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {projects.map(p => (
-            <button
+            <div
               key={p.id}
-              onClick={() => selectProject(p)}
               className={[
-                'w-full text-left px-3 py-2 border-b border-[#21262d] transition-colors',
+                'group flex items-center border-b border-[#21262d] transition-colors',
                 activeProject?.id === p.id ? 'bg-[#21262d]' : 'hover:bg-[#161b22]',
               ].join(' ')}
             >
-              <div className={`text-xs truncate ${activeProject?.id === p.id ? 'text-[#e6edf3]' : 'text-[#8b949e]'}`}>
-                {p.name}
-              </div>
-            </button>
+              <button
+                onClick={() => selectProject(p)}
+                className="flex-1 text-left px-3 py-2 min-w-0"
+              >
+                <div className={`text-xs truncate ${activeProject?.id === p.id ? 'text-[#e6edf3]' : 'text-[#8b949e]'}`}>
+                  {p.name}
+                </div>
+              </button>
+              <button
+                onClick={() => handleDeleteProject(p.id)}
+                className="opacity-0 group-hover:opacity-100 px-2 py-2 text-[#484f58] hover:text-[#f85149] text-xs shrink-0"
+                title="Delete project"
+              >×</button>
+            </div>
           ))}
         </div>
 
@@ -268,19 +260,28 @@ export default function WorkspaceApp() {
               <div className="px-3 py-2 text-[10px] text-[#484f58]">No sessions yet</div>
             )}
             {sessions.map(s => (
-              <button
+              <div
                 key={s.id}
-                onClick={() => selectSession(activeProject, s)}
                 className={[
-                  'w-full text-left px-3 py-1.5 border-b border-[#21262d] transition-colors',
+                  'group flex items-center border-b border-[#21262d] transition-colors',
                   activeSession?.id === s.id ? 'bg-[#21262d]' : 'hover:bg-[#161b22]',
                 ].join(' ')}
               >
-                <div className={`text-[11px] truncate ${activeSession?.id === s.id ? 'text-[#e6edf3]' : 'text-[#8b949e]'}`}>
-                  {s.name}
-                </div>
-                <div className="text-[10px] text-[#484f58]">{s.status}</div>
-              </button>
+                <button
+                  onClick={() => selectSession(activeProject, s)}
+                  className="flex-1 text-left px-3 py-1.5 min-w-0"
+                >
+                  <div className={`text-[11px] truncate ${activeSession?.id === s.id ? 'text-[#e6edf3]' : 'text-[#8b949e]'}`}>
+                    {s.name}
+                  </div>
+                  <div className="text-[10px] text-[#484f58]">{s.status}</div>
+                </button>
+                <button
+                  onClick={() => handleDeleteSession(activeProject.id, s.id)}
+                  className="opacity-0 group-hover:opacity-100 px-2 py-1.5 text-[#484f58] hover:text-[#f85149] text-xs shrink-0"
+                  title="Close session"
+                >×</button>
+              </div>
             ))}
           </>
         )}
@@ -294,12 +295,22 @@ export default function WorkspaceApp() {
             <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
               <span className="text-xs text-[#e6edf3] font-medium">{activeProject.name}</span>
               <span className="text-xs text-[#8b949e]">/ {activeSession.name}</span>
-              <button
-                onClick={() => setShowFiles(!showFiles)}
-                className="ml-auto text-[10px] px-2 py-0.5 rounded bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3]"
-              >
-                {showFiles ? 'Hide Files' : 'Files'}
-              </button>
+              <div className="ml-auto flex gap-1">
+                {(['files', 'stats'] as const).map(panel => (
+                  <button
+                    key={panel}
+                    onClick={() => setRightPanel(rightPanel === panel ? null : panel)}
+                    className={[
+                      'text-[10px] px-2 py-0.5 rounded capitalize',
+                      rightPanel === panel
+                        ? 'bg-[#388bfd]/20 text-[#58a6ff]'
+                        : 'bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3]',
+                    ].join(' ')}
+                  >
+                    {panel}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -342,9 +353,14 @@ export default function WorkspaceApp() {
           </div>
         </div>
 
-        {showFiles && activeProject && activeSession && (
-          <div className="w-52 shrink-0">
-            <FileBrowserPanel projectId={activeProject.id} sessionId={activeSession.id} />
+        {rightPanel && activeProject && activeSession && (
+          <div className="w-80 shrink-0 border-l border-[#30363d] flex flex-col">
+            {rightPanel === 'files' && (
+              <FileViewer projectId={activeProject.id} sessionId={activeSession.id} />
+            )}
+            {rightPanel === 'stats' && (
+              <SessionStatsPanel project={activeProject} session={activeSession} />
+            )}
           </div>
         )}
       </div>

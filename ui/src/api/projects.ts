@@ -88,6 +88,37 @@ export async function canPickFolder(): Promise<boolean> {
   return data.supported === true
 }
 
+export async function deleteSession(projectId: string, sessionId: string): Promise<void> {
+  const res = await fetch(`/api/projects/${projectId}/sessions/${sessionId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
+export interface SessionStats {
+  tokens: number
+  tools: number
+  turns?: number
+  startedAt?: string
+  model?: string
+}
+
+export async function getSessionStats(projectId: string, sessionId: string): Promise<SessionStats> {
+  const res = await fetch(`/api/projects/${projectId}/sessions/${sessionId}/stats`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function readFileContent(
+  projectId: string,
+  sessionId: string,
+  path: string,
+): Promise<string> {
+  const res = await fetch(
+    `/api/projects/${projectId}/sessions/${sessionId}/files/${path}`,
+  )
+  if (!res.ok) throw new Error(await res.text())
+  return res.text()
+}
+
 export async function listFiles(
   projectId: string,
   sessionId: string,
