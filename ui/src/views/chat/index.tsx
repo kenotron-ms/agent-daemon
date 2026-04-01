@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChatMessage, sendChat, getChatHistory, clearChatHistory } from '../../api/chat'
 
-export default function ChatView() {
+interface Props {
+  onResponse?: () => void  // called after every assistant reply — lets Jobs refresh the list
+}
+
+export default function ChatView({ onResponse }: Props = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -42,6 +46,7 @@ export default function ChatView() {
         createdAt: new Date().toISOString(),
       }
       setMessages(prev => [...prev, assistantMsg])
+      onResponse?.()
     } catch (e: unknown) {
       const err = e as { message?: string; error?: string }
       if (err?.error === 'no_api_key') {
@@ -49,7 +54,6 @@ export default function ChatView() {
       } else {
         setError(err?.message ?? 'Something went wrong.')
       }
-      // remove the optimistic user message
       setMessages(prev => prev.filter(m => m.id !== userMsg.id))
     } finally {
       setLoading(false)
@@ -66,10 +70,7 @@ export default function ChatView() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d] shrink-0">
         <span className="text-sm font-semibold text-[#e6edf3]">AI Assistant</span>
-        <button
-          onClick={handleClear}
-          className="text-xs text-[#8b949e] hover:text-[#f85149]"
-        >
+        <button onClick={handleClear} className="text-xs text-[#8b949e] hover:text-[#f85149]">
           Clear history
         </button>
       </div>
@@ -78,38 +79,27 @@ export default function ChatView() {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div className="text-sm text-[#8b949e] text-center mt-8">
-            Ask me to create, list, or manage your jobs.
-            <div className="text-xs mt-2 text-[#484f58]">e.g. "List my jobs" or "Create a daily digest job"</div>
+            Describe what you want — I'll create or manage jobs for you.
+            <div className="text-xs mt-2 text-[#484f58]">e.g. "Create a daily digest job" or "Run the backup job now"</div>
           </div>
         )}
         {messages.map(msg => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={[
-                'max-w-[75%] rounded-lg px-3 py-2 text-sm',
-                msg.role === 'user'
-                  ? 'bg-[#1f6feb] text-white'
-                  : 'bg-[#21262d] text-[#e6edf3]',
-              ].join(' ')}
-            >
-              <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={[
+              'max-w-[75%] rounded-lg px-3 py-2 text-sm',
+              msg.role === 'user' ? 'bg-[#1f6feb] text-white' : 'bg-[#21262d] text-[#e6edf3]',
+            ].join(' ')}>
+              <pre className="whitespace-pre-wrap font-sans m-0">{msg.content}</pre>
             </div>
           </div>
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-[#21262d] text-[#8b949e] rounded-lg px-3 py-2 text-sm">
-              thinking…
-            </div>
+            <div className="bg-[#21262d] text-[#8b949e] rounded-lg px-3 py-2 text-sm">thinking…</div>
           </div>
         )}
         {error && (
-          <div className="text-xs text-[#f85149] bg-[#3a1a1a] rounded px-3 py-2">
-            {error}
-          </div>
+          <div className="text-xs text-[#f85149] bg-[#3a1a1a] rounded px-3 py-2">{error}</div>
         )}
         <div ref={bottomRef} />
       </div>
@@ -119,11 +109,12 @@ export default function ChatView() {
         <div className="flex gap-2">
           <input
             className="flex-1 px-3 py-1.5 text-sm bg-[#161b22] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#484f58] focus:outline-none focus:border-[#58a6ff]"
-            placeholder="Ask anything about your jobs…"
+            placeholder="Describe what you want…"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
             disabled={loading}
+            autoFocus
           />
           <button
             onClick={handleSend}

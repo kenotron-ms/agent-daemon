@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Connector, Entity, listEntities } from '../../api/mirror'
 
+/** Handle data that might be a raw JSON string (double-encoded) or already an object. */
+function renderData(data: unknown): string {
+  if (typeof data === 'string') {
+    try { return JSON.stringify(JSON.parse(data), null, 2) } catch { return data }
+  }
+  return JSON.stringify(data, null, 2)
+}
+
 interface Props {
   connector: Connector
 }
@@ -48,7 +56,7 @@ export default function EntityBrowser({ connector }: Props) {
         <div className="flex-1 overflow-auto p-4">
           {selected ? (
             <pre className="text-xs text-[#e6edf3] whitespace-pre-wrap font-mono">
-              {JSON.stringify(selected.data, null, 2)}
+              {renderData(selected.data)}
             </pre>
           ) : (
             <span className="text-[#8b949e] text-sm">Select an entity</span>

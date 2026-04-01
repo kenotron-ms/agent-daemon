@@ -9,7 +9,7 @@ interface Props {
 export default function RunDetail({ job }: Props) {
   const [runs, setRuns] = useState<JobRun[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
-  const logLines = useRunStream(activeRunId)
+  const logOutput = useRunStream(activeRunId)
 
   const refreshRuns = async (jobId: string) => {
     try {
@@ -86,11 +86,11 @@ export default function RunDetail({ job }: Props) {
         </div>
       )}
 
-      {/* Log output */}
-      <div className="flex-1 overflow-y-auto font-mono text-[11px] text-[#e6edf3] bg-[#0d1117] p-4 leading-relaxed">
-        {logLines.length > 0
-          ? logLines.map((line, i) => <div key={i}>{line}</div>)
-          : <span className="text-[#8b949e]">No output yet — click ▶ Run Now to trigger a run.</span>
+      {/* Log output — use <pre> so \n inside chunks renders as line breaks */}
+      <div className="flex-1 overflow-y-auto bg-[#0d1117] p-4">
+        {logOutput
+          ? <pre className="font-mono text-[11px] text-[#e6edf3] whitespace-pre-wrap leading-relaxed m-0">{logOutput}</pre>
+          : <span className="font-mono text-[11px] text-[#8b949e]">No output yet — click ▶ Run Now to trigger a run.</span>
         }
       </div>
     </div>
