@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os/exec"
+	"strings"
 
 	"github.com/ms/amplifier-app-loom/internal/files"
 )
@@ -106,16 +108,25 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
-		return
-	}
 	// A session runs in the project's root directory by default.
 	// Worktree association is a separate, optional operation — not required to create a session.
 	p, err := s.workspaceStore.GetProject(r.Context(), projectID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "project not found")
 		return
+	}
+	// Auto-name: derive from git branch when no name is supplied.
+	// Eventually this will be replaced by amplifier's own session-naming hook —
+	// amplifier auto-names sessions based on conversation context (e.g. "Loom macOS App Icon & DMG").
+	if req.Name == "" {
+		if out, err2 := exec.CommandContext(r.Context(),
+			"git", "-C", p.Path, "rev-parse", "--abbrev-ref", "HEAD",
+		).Output(); err2 == nil {
+			req.Name = strings.TrimSpace(string(out))
+		}
+		if req.Name == "" || req.Name == "HEAD" {
+			req.Name = "main"
+		}
 	}
 	sess, err := s.workspaceStore.CreateSession(r.Context(), projectID, req.Name, p.Path)
 	if err != nil {

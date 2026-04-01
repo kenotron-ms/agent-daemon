@@ -132,6 +132,8 @@ export default function WorkspaceApp() {
       setProjects(ps => [...ps, p])
       setShowNewProject(false)
       setNewProjectPath('')
+      // Auto-create first session — name derived from git branch on the backend
+      await createSession(p.id, '').catch(() => {})
       selectProject(p)
     } catch (e) {
       console.error('createProject:', e)
