@@ -115,9 +115,10 @@ export default function WorkspaceApp() {
   }
 
   async function handleCreateProject() {
-    if (!newProjectName || !newProjectPath) return
+    if (!newProjectPath) return
+    const name = newProjectPath.split('/').filter(Boolean).pop() || newProjectPath
     try {
-      const p = await createProject(newProjectName, newProjectPath)
+      const p = await createProject(name, newProjectPath)
       setProjects(ps => [...ps, p])
       setShowNewProject(false)
       setNewProjectName('')
@@ -314,20 +315,13 @@ export default function WorkspaceApp() {
       {showNewProject && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
           <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-5 w-80">
-            <h3 className="text-sm font-semibold text-[#e6edf3] mb-4">New Project</h3>
-            <input
-              className="w-full mb-3 px-3 py-1.5 text-sm bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
-              placeholder="Project name"
-              value={newProjectName}
-              onChange={e => setNewProjectName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
-              autoFocus
-            />
+            <h3 className="text-sm font-semibold text-[#e6edf3] mb-4">Open Project</h3>
             <div className="flex gap-2 mb-4">
               <input
                 className="flex-1 px-3 py-1.5 text-sm bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
                 placeholder="/absolute/path/to/codebase"
                 value={newProjectPath}
+                autoFocus
                 onChange={e => setNewProjectPath(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
               />
