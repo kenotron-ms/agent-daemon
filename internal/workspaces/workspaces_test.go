@@ -22,7 +22,10 @@ func openTestDB(t *testing.T) *bolt.DB {
 }
 
 func TestCreateProject(t *testing.T) {
-	svc := workspaces.New(openTestDB(t))
+	svc, err := workspaces.New(openTestDB(t))
+	if err != nil {
+		t.Fatalf("workspaces.New: %v", err)
+	}
 	ctx := context.Background()
 
 	p, err := svc.CreateProject(ctx, "loom", "/tmp/loom")
@@ -41,7 +44,10 @@ func TestCreateProject(t *testing.T) {
 }
 
 func TestListProjects(t *testing.T) {
-	svc := workspaces.New(openTestDB(t))
+	svc, err := workspaces.New(openTestDB(t))
+	if err != nil {
+		t.Fatalf("workspaces.New: %v", err)
+	}
 	ctx := context.Background()
 
 	svc.CreateProject(ctx, "alpha", "/tmp/alpha")
@@ -57,7 +63,10 @@ func TestListProjects(t *testing.T) {
 }
 
 func TestDeleteProject(t *testing.T) {
-	svc := workspaces.New(openTestDB(t))
+	svc, err := workspaces.New(openTestDB(t))
+	if err != nil {
+		t.Fatalf("workspaces.New: %v", err)
+	}
 	ctx := context.Background()
 
 	p, _ := svc.CreateProject(ctx, "toDelete", "/tmp/del")
@@ -71,7 +80,10 @@ func TestDeleteProject(t *testing.T) {
 }
 
 func TestCreateSession(t *testing.T) {
-	svc := workspaces.New(openTestDB(t))
+	svc, err := workspaces.New(openTestDB(t))
+	if err != nil {
+		t.Fatalf("workspaces.New: %v", err)
+	}
 	ctx := context.Background()
 
 	dir := t.TempDir()
@@ -90,7 +102,10 @@ func TestCreateSession(t *testing.T) {
 }
 
 func TestListSessionsForProject(t *testing.T) {
-	svc := workspaces.New(openTestDB(t))
+	svc, err := workspaces.New(openTestDB(t))
+	if err != nil {
+		t.Fatalf("workspaces.New: %v", err)
+	}
 	ctx := context.Background()
 
 	dir := t.TempDir()
@@ -104,5 +119,39 @@ func TestListSessionsForProject(t *testing.T) {
 	}
 	if len(sessions) != 2 {
 		t.Fatalf("expected 2 sessions, got %d", len(sessions))
+	}
+}
+
+func TestDeleteProjectCascadesSessions(t *testing.T) {
+	svc, err := workspaces.New(openTestDB(t))
+	if err != nil {
+		t.Fatalf("workspaces.New: %v", err)
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	p, _ := svc.CreateProject(ctx, "proj", dir)
+	s1, _ := svc.CreateSession(ctx, p.ID, "main", dir)
+	s2, _ := svc.CreateSession(ctx, p.ID, "feature", filepath.Join(dir, "feature"))
+
+	if err := svc.DeleteProject(ctx, p.ID); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
+	}
+
+	// Sessions should be gone from the index
+	sessions, err := svc.ListSessions(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("ListSessions after delete: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions after project delete, got %d", len(sessions))
+	}
+
+	// Session records themselves should also be deleted (cascade)
+	if _, err := svc.GetSession(ctx, s1.ID); err == nil {
+		t.Fatalf("expected GetSession(%s) to fail after cascade delete, but it succeeded", s1.ID)
+	}
+	if _, err := svc.GetSession(ctx, s2.ID); err == nil {
+		t.Fatalf("expected GetSession(%s) to fail after cascade delete, but it succeeded", s2.ID)
 	}
 }

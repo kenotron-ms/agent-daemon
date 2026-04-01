@@ -1,6 +1,7 @@
 package workspaces
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -42,14 +43,19 @@ type Service struct {
 }
 
 // New creates a Service and initialises the required bbolt buckets.
-func New(db *bolt.DB) *Service {
-	db.Update(func(tx *bolt.Tx) error {
+func New(db *bolt.DB) (*Service, error) {
+	err := db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{bucketProjects, bucketSessions, bucketSessionsByProject} {
-			tx.CreateBucketIfNotExists(b)
+			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
+				return fmt.Errorf("create bucket %q: %w", b, err)
+			}
 		}
 		return nil
 	})
-	return &Service{db: db}
+	if err != nil {
+		return nil, fmt.Errorf("initialise workspaces buckets: %w", err)
+	}
+	return &Service{db: db}, nil
 }
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -105,17 +111,21 @@ func (s *Service) ListProjects(_ context.Context) ([]*Project, error) {
 }
 
 func (s *Service) UpdateProject(_ context.Context, id, name string) (*Project, error) {
-	p, err := s.GetProject(context.Background(), id)
-	if err != nil {
-		return nil, err
-	}
-	p.Name = name
-	return p, s.db.Update(func(tx *bolt.Tx) error {
-		data, err := json.Marshal(p)
+	var p Project
+	return &p, s.db.Update(func(tx *bolt.Tx) error {
+		data := tx.Bucket(bucketProjects).Get([]byte(id))
+		if data == nil {
+			return fmt.Errorf("project %s not found", id)
+		}
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		p.Name = name
+		updated, err := json.Marshal(p)
 		if err != nil {
 			return err
 		}
-		return tx.Bucket(bucketProjects).Put([]byte(p.ID), data)
+		return tx.Bucket(bucketProjects).Put([]byte(id), updated)
 	})
 }
 
@@ -124,12 +134,19 @@ func (s *Service) DeleteProject(_ context.Context, id string) error {
 		if err := tx.Bucket(bucketProjects).Delete([]byte(id)); err != nil {
 			return err
 		}
-		// delete all session index entries for this project
+		// delete all session records and index entries for this project
 		prefix := []byte(id + "/")
 		idxBucket := tx.Bucket(bucketSessionsByProject)
+		sessionBucket := tx.Bucket(bucketSessions)
 		c := idxBucket.Cursor()
-		for k, _ := c.Seek(prefix); k != nil && len(k) > len(prefix) && string(k[:len(prefix)]) == string(prefix); k, _ = c.Next() {
-			idxBucket.Delete(k)
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			sessionID := string(k[len(prefix):])
+			if err := sessionBucket.Delete([]byte(sessionID)); err != nil {
+				return err
+			}
+			if err := c.Delete(); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -199,7 +216,7 @@ func (s *Service) ListSessions(_ context.Context, projectID string) ([]*Session,
 	err := s.db.View(func(tx *bolt.Tx) error {
 		prefix := []byte(projectID + "/")
 		c := tx.Bucket(bucketSessionsByProject).Cursor()
-		for k, _ := c.Seek(prefix); k != nil && len(k) > len(prefix) && string(k[:len(prefix)]) == string(prefix); k, _ = c.Next() {
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
 			sessionID := string(k[len(prefix):])
 			data := tx.Bucket(bucketSessions).Get([]byte(sessionID))
 			if data == nil {
