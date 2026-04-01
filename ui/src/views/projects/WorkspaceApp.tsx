@@ -20,7 +20,7 @@ export default function WorkspaceApp() {
   // Grove pattern: keep ALL seen processIds in DOM, show active via visibility:hidden
   const [liveProcessIds, setLiveProcessIds] = useState<Set<string>>(new Set())
   const [activeProcessId, setActiveProcessId] = useState<string | null>(null)
-  const [rightPanel, setRightPanel] = useState<'files' | 'stats' | null>(null)
+  const [rightPanel, setRightPanel] = useState<'files' | 'stats'>('files')
 
   // New Project modal
   const [showNewProject, setShowNewProject] = useState(false)
@@ -90,7 +90,7 @@ export default function WorkspaceApp() {
         setActiveSession(null)
         setActiveProcessId(null)
         setLiveProcessIds(new Set())
-        setRightPanel(null)
+        setRightPanel('files')
       }
     } catch (e) { console.error('deleteProject:', e) }
   }
@@ -109,7 +109,7 @@ export default function WorkspaceApp() {
           reg.buffers.delete(activeProcessId)
           reg.terminals.delete(activeProcessId)
         }
-        setRightPanel(null)
+        setRightPanel('files')
       }
     } catch (e) { console.error('deleteSession:', e) }
   }
@@ -243,22 +243,6 @@ export default function WorkspaceApp() {
             <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
               <span className="text-xs text-[#e6edf3] font-medium">{activeProject.name}</span>
               <span className="text-xs text-[#8b949e]">/ {activeSession.name}</span>
-              <div className="ml-auto flex gap-1">
-                {(['files', 'stats'] as const).map(panel => (
-                  <button
-                    key={panel}
-                    onClick={() => setRightPanel(rightPanel === panel ? null : panel)}
-                    className={[
-                      'text-[10px] px-2 py-0.5 rounded capitalize',
-                      rightPanel === panel
-                        ? 'bg-[#388bfd]/20 text-[#58a6ff]'
-                        : 'bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3]',
-                    ].join(' ')}
-                  >
-                    {panel}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
@@ -310,10 +294,27 @@ export default function WorkspaceApp() {
           </div>
         </Panel>
 
-        {rightPanel && activeProject && activeSession && (
+        {activeProject && activeSession && (
           <>
             <PanelResizeHandle className="w-1 bg-[#30363d] hover:bg-[#58a6ff] transition-colors cursor-col-resize" />
-            <Panel defaultSize={50} minSize={20} className="flex flex-col overflow-hidden">
+            <Panel defaultSize={40} minSize={20} className="flex flex-col overflow-hidden">
+              {/* Right panel tab bar */}
+              <div className="flex items-center border-b border-[#30363d] bg-[#161b22] shrink-0">
+                {(['files', 'stats'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setRightPanel(tab)}
+                    className={[
+                      'px-4 py-1.5 text-[11px] capitalize border-b-2 transition-colors',
+                      rightPanel === tab
+                        ? 'border-[#58a6ff] text-[#e6edf3]'
+                        : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]',
+                    ].join(' ')}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
               {rightPanel === 'files' && (
                 <FileViewer projectId={activeProject.id} sessionId={activeSession.id} />
               )}

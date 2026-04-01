@@ -4,7 +4,9 @@ import 'highlight.js/styles/github-dark.css'
 import { FileEntry, listFiles, readFileContent } from '../../api/projects'
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|svg|webp|ico|avif)$/i
+const HTML_EXT  = /\.html?$/i
 const isImage = (name: string) => IMAGE_EXT.test(name)
+const isHtml  = (name: string) => HTML_EXT.test(name)
 
 const EXT_LANG: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
@@ -38,6 +40,7 @@ export default function FileViewer({ projectId, sessionId }: Props) {
   const [path, setPath] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [content, setContent] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'source' | 'preview'>('source')
   const [loading, setLoading] = useState(false)
   const [contentLoading, setContentLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,6 +59,7 @@ export default function FileViewer({ projectId, sessionId }: Props) {
   const openFile = async (name: string) => {
     const fullPath = path ? `${path}/${name}` : name
     setSelected(fullPath)
+    setViewMode('source')   // always start in source; user switches to preview if they want
     if (isImage(name)) {
       setContent('__image__')
       return
@@ -74,6 +78,11 @@ export default function FileViewer({ projectId, sessionId }: Props) {
   }
 
   const breadcrumbs = path.split('/').filter(Boolean)
+
+  // Derived helpers used in render
+  const fileName    = selected?.split('/').pop() ?? ''
+  const htmlFile    = !!selected && isHtml(fileName)
+  const isPreviewing = htmlFile && viewMode === 'preview'
 
   return (
     <div className="flex h-full bg-[#0d1117]">
@@ -126,8 +135,8 @@ export default function FileViewer({ projectId, sessionId }: Props) {
         </div>
       </div>
 
-      {/* Content pane */}
-      <div className="flex-1 overflow-auto">
+      {/* Content pane — flex-col in preview mode so iframe fills remaining height */}
+      <div className={`flex-1 ${isPreviewing ? 'flex flex-col overflow-hidden' : 'overflow-auto'}`}>
         {!selected && (
           <div className="flex items-center justify-center h-full text-[#484f58] text-sm">
             Select a file to view
@@ -152,18 +161,47 @@ export default function FileViewer({ projectId, sessionId }: Props) {
         )}
         {selected && content !== null && content !== '__image__' && (
           <>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] sticky top-0">
+            {/* File header — path + Source/Preview toggle for HTML files */}
+            <div className={`flex items-center gap-2 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] ${isPreviewing ? 'shrink-0' : 'sticky top-0'}`}>
               <span className="text-[10px] text-[#8b949e] font-mono truncate">{selected}</span>
-              <span className="ml-auto text-[9px] text-[#484f58]">{langFor(selected.split('/').pop() ?? '')}</span>
+              {htmlFile ? (
+                <div className="ml-auto flex gap-1">
+                  {(['source', 'preview'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      className={[
+                        'text-[10px] px-2 py-0.5 rounded capitalize',
+                        viewMode === mode
+                          ? 'bg-[#388bfd]/20 text-[#58a6ff]'
+                          : 'bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3]',
+                      ].join(' ')}
+                    >{mode}</button>
+                  ))}
+                </div>
+              ) : (
+                <span className="ml-auto text-[9px] text-[#484f58]">{langFor(fileName)}</span>
+              )}
             </div>
-            <pre className="m-0 p-0 overflow-auto">
-              <code
-                className="block p-4 text-[12px] font-mono leading-relaxed"
-                dangerouslySetInnerHTML={{
-                  __html: highlight(content, langFor(selected.split('/').pop() ?? '')),
-                }}
+
+            {/* Preview: iframe with HTML content rendered in-place */}
+            {isPreviewing ? (
+              <iframe
+                srcDoc={content}
+                className="flex-1 w-full border-0 bg-white"
+                sandbox="allow-scripts allow-same-origin"
+                title={selected}
               />
-            </pre>
+            ) : (
+              <pre className="m-0 p-0 overflow-auto">
+                <code
+                  className="block p-4 text-[12px] font-mono leading-relaxed"
+                  dangerouslySetInnerHTML={{
+                    __html: highlight(content, langFor(fileName)),
+                  }}
+                />
+              </pre>
+            )}
           </>
         )}
       </div>
