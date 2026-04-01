@@ -182,14 +182,23 @@ func (s *Server) spawnTerminal(w http.ResponseWriter, r *http.Request) {
 	s.workspaceStore.UpdateSessionStatus(r.Context(), sid, "active", &processID) //nolint:errcheck
 	writeJSON(w, http.StatusOK, map[string]string{"processId": processID})
 
-	// One goroutine per loom session handles both concerns:
-	//   1. Capture the amplifier session ID after a fresh start (stored in DB)
-	//   2. Watch for the amplifier auto-name and rename the loom session
-	isNew := sess.AmplifierSessionID == ""
+	// For new sessions: scan PTY stdout for "Session ID: <uuid>" in the startup banner.
+	// Fires within ~1s — no polling, no filesystem scan, no delay.
+	if sess.AmplifierSessionID == "" {
+		s.ptyMgr.ScanForSessionID(processID, func(ampID string) {
+			ctx := context.Background()
+			if err := s.workspaceStore.SetAmplifierSessionID(ctx, sid, ampID); err == nil {
+				slog.Info("amplifier session ID captured from banner",
+					"loom_session", sid, "amp_session", ampID)
+			}
+		})
+	}
+
+	// Watch for the amplifier auto-name and rename the loom session when it fires.
 	if _, loaded := s.watchedSessions.LoadOrStore(sid, struct{}{}); !loaded {
 		go func() {
 			defer s.watchedSessions.Delete(sid)
-			s.watchSession(sid, sess.WorktreePath, isNew)
+			s.watchSession(sid, sess.WorktreePath)
 		}()
 	}
 }
@@ -261,49 +270,30 @@ func (s *Server) getSessionStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// watchSession is a unified goroutine started once per loom session on first spawn.
-//
-//   isNew=true  → also capture the amplifier session UUID after fresh start
-//   isNew=false → amplifier session ID already stored, just watch for name updates
-//
+// watchSession polls ~/.amplifier/.../sessions/*/metadata.json and renames the
+// loom session whenever amplifier's auto-naming hook fires.
+// Session ID capture is handled separately via ScanForSessionID (PTY stdout tap).
 // Exits when the loom session is deleted from the DB.
-func (s *Server) watchSession(sessionID, worktreePath string, isNew bool) {
-	// Give amplifier a few seconds to create its session record on disk.
-	time.Sleep(4 * time.Second)
+func (s *Server) watchSession(sessionID, worktreePath string) {
+	time.Sleep(4 * time.Second) // give amplifier time to create its session record
 
-	after := time.Now().Add(-8 * time.Second) // include sessions created just before us
+	after := time.Now().Add(-8 * time.Second)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	ctx := context.Background()
 
-	idCaptured := !isNew // skip capture step for resume sessions
-
 	for range ticker.C {
 		sess, err := s.workspaceStore.GetSession(ctx, sessionID)
 		if err != nil {
-			return // session was deleted
+			return // session deleted
 		}
-
 		meta, err := amplifier.NewestSession(worktreePath, after)
-		if err != nil || meta == nil {
+		if err != nil || meta == nil || meta.Name == "" || meta.Name == sess.Name {
 			continue
 		}
-
-		// 1. Capture the amplifier session ID (once, for new sessions only)
-		if !idCaptured && meta.SessionID != "" {
-			if err := s.workspaceStore.SetAmplifierSessionID(ctx, sessionID, meta.SessionID); err == nil {
-				slog.Info("amplifier session ID captured",
-					"loom_session", sessionID, "amp_session", meta.SessionID)
-				idCaptured = true
-			}
-		}
-
-		// 2. Rename loom session when amplifier's naming hook fires
-		if meta.Name != "" && meta.Name != sess.Name {
-			if err := s.workspaceStore.RenameSession(ctx, sessionID, meta.Name); err == nil {
-				slog.Info("session renamed from amplifier hook",
-					"session", sessionID, "name", meta.Name)
-			}
+		if err := s.workspaceStore.RenameSession(ctx, sessionID, meta.Name); err == nil {
+			slog.Info("session renamed from amplifier hook",
+				"session", sessionID, "name", meta.Name)
 		}
 	}
 }

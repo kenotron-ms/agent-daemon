@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"sync"
 	"time"
 
@@ -13,6 +14,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
+
+// reAmpSessionID matches amplifier's startup banner line:
+//   │ Session ID: 65ab7311-33cd-4526-9f5f-ebe6fd40a718  │
+var reAmpSessionID = regexp.MustCompile(`Session ID:\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
 
 // Process wraps a running PTY process.
 type Process struct {
@@ -26,9 +31,36 @@ type Process struct {
 //   procs: UUID id → *Process   (for WebSocket lookup by processId)
 //   keys:  key    → UUID id     (for deduplication: same worktree = same process)
 type Manager struct {
-	mu    sync.Mutex
-	procs map[string]*Process // UUID id → process
-	keys  map[string]string   // key → UUID id
+	mu          sync.Mutex
+	procs       map[string]*Process // UUID id → process
+	keys        map[string]string   // key → UUID id
+	outputSinks sync.Map            // processID → []func([]byte)  (output tap callbacks)
+}
+
+// OnOutput registers a callback that receives every chunk of PTY output for
+// processID. Returns a cancel function that deregisters the callback.
+// Used to scan stdout for the amplifier session ID banner.
+func (m *Manager) OnOutput(processID string, cb func([]byte)) (cancel func()) {
+	key := processID
+	m.outputSinks.Store(key, cb)
+	return func() { m.outputSinks.Delete(key) }
+}
+
+// ScanForSessionID registers a one-shot output scanner on processID.
+// When the amplifier "Session ID: <uuid>" banner line appears, onFound is
+// called with the UUID and the scanner is automatically deregistered.
+func (m *Manager) ScanForSessionID(processID string, onFound func(ampSessionID string)) {
+	var cancel func()
+	cancel = m.OnOutput(processID, func(data []byte) {
+		matches := reAmpSessionID.FindSubmatch(data)
+		if len(matches) < 2 {
+			return
+		}
+		if cancel != nil {
+			cancel() // one-shot: deregister immediately
+		}
+		onFound(string(matches[1]))
+	})
 }
 
 // NewManager returns an initialised Manager.
@@ -144,6 +176,7 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request, processID stri
 	defer conn.Close()
 
 	// PTY → WebSocket (goroutine)
+	// Each chunk is also forwarded to any registered output scanners (e.g. session-ID capture).
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -151,7 +184,12 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request, processID stri
 			if err != nil {
 				return
 			}
-			if err := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
+			chunk := buf[:n]
+			// Tap: notify any registered output scanners
+			if cb, ok := m.outputSinks.Load(processID); ok {
+				cb.(func([]byte))(chunk)
+			}
+			if err := conn.WriteMessage(websocket.BinaryMessage, chunk); err != nil {
 				return
 			}
 		}
