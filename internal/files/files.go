@@ -20,17 +20,32 @@ type Browser struct {
 }
 
 // New creates a Browser rooted at root (must be absolute).
+// The root is canonicalised via filepath.EvalSymlinks so that symlink
+// checks inside resolve() compare against the real path on disk.
 func New(root string) *Browser {
-	return &Browser{root: filepath.Clean(root)}
+	clean := filepath.Clean(root)
+	if real, err := filepath.EvalSymlinks(clean); err == nil {
+		clean = real
+	}
+	return &Browser{root: clean}
 }
 
 // resolve validates rel and returns its absolute path, rejecting traversal.
 func (b *Browser) resolve(rel string) (string, error) {
 	abs := filepath.Clean(filepath.Join(b.root, rel))
+	// Reject traversal before hitting the filesystem.
 	if abs != b.root && !strings.HasPrefix(abs, b.root+string(filepath.Separator)) {
 		return "", fmt.Errorf("path %q is outside root", rel)
 	}
-	return abs, nil
+	// Resolve symlinks and re-check so a symlink can't escape the root.
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", fmt.Errorf("resolve %q: %w", rel, err)
+	}
+	if real != b.root && !strings.HasPrefix(real, b.root+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q escapes root via symlink", rel)
+	}
+	return real, nil
 }
 
 // List returns directory entries at rel (empty string = root).
