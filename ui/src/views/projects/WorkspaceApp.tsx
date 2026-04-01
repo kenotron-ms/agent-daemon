@@ -4,11 +4,11 @@ import {
   Project, Session,
   listProjects, createProject, deleteProject,
   listSessions, createSession, deleteSession, spawnTerminal,
-  pickFolder, canPickFolder,
 } from '../../api/projects'
 import FileViewer from './FileViewer'
 import SessionStatsPanel from './SessionStats'
 import { TerminalPanel } from './terminal/TerminalPanel'
+import DirectoryBrowserModal from '../../components/DirectoryBrowserModal'
 
 // ── Main workspace ────────────────────────────────────────────────────────────
 
@@ -25,8 +25,7 @@ export default function WorkspaceApp() {
   // New Project modal
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectPath, setNewProjectPath] = useState('')
-  const [canBrowse, setCanBrowse] = useState(false)
-  useEffect(() => { canPickFolder().then(setCanBrowse).catch(() => setCanBrowse(false)) }, [])
+  const [showDirBrowser, setShowDirBrowser] = useState(false)
 
   const [creatingSession, setCreatingSession] = useState(false)
 
@@ -112,15 +111,6 @@ export default function WorkspaceApp() {
         setRightPanel('files')
       }
     } catch (e) { console.error('deleteSession:', e) }
-  }
-
-  async function handleBrowse() {
-    try {
-      const result = await pickFolder()
-      if (result.path) setNewProjectPath(result.path)
-    } catch (e) {
-      console.error('browse:', e)
-    }
   }
 
   async function handleCreateProject() {
@@ -326,6 +316,14 @@ export default function WorkspaceApp() {
         )}
       </PanelGroup>
 
+      {/* Server-side directory browser */}
+      {showDirBrowser && (
+        <DirectoryBrowserModal
+          onSelect={p => { setNewProjectPath(p); setShowDirBrowser(false) }}
+          onClose={() => setShowDirBrowser(false)}
+        />
+      )}
+
       {/* New Project modal */}
       {showNewProject && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -340,15 +338,13 @@ export default function WorkspaceApp() {
                 onChange={e => setNewProjectPath(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
               />
-              {canBrowse && (
-                <button
-                  onClick={handleBrowse}
-                  type="button"
-                  className="px-3 py-1.5 text-xs bg-[#21262d] border border-[#30363d] rounded text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] shrink-0"
-                >
-                  Browse…
-                </button>
-              )}
+              <button
+                onClick={() => setShowDirBrowser(true)}
+                type="button"
+                className="px-3 py-1.5 text-xs bg-[#21262d] border border-[#30363d] rounded text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] shrink-0"
+              >
+                Browse…
+              </button>
             </div>
             <div className="flex gap-2 justify-end">
               <button

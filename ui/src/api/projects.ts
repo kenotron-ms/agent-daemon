@@ -74,19 +74,29 @@ export async function spawnTerminal(
   return res.json()
 }
 
-/** Opens the native OS folder picker via the backend (zenity binary — no browser modal). */
-export async function pickFolder(): Promise<{ path?: string; cancelled?: boolean }> {
-  const res = await fetch('/api/filesystem/pick-folder')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+export interface BrowseEntry {
+  name: string
+  hidden: boolean
 }
 
-/** Returns true if the zenity binary is available on the backend. */
-export async function canPickFolder(): Promise<boolean> {
-  const res = await fetch('/api/filesystem/pick-folder?check=1')
-  if (!res.ok) return false
-  const data = await res.json()
-  return data.supported === true
+export interface BrowseResult {
+  path: string
+  home: string
+  parent: string
+  entries: BrowseEntry[]
+}
+
+/** List directories on the SERVER at the given path (defaults to home dir). */
+export async function browseDirs(path?: string): Promise<BrowseResult> {
+  const url = path
+    ? `/api/filesystem/browse?path=${encodeURIComponent(path)}`
+    : '/api/filesystem/browse'
+  const res = await fetch(url)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(err.error ?? 'Failed to browse directory')
+  }
+  return res.json()
 }
 
 /** Given a directory name, find the full absolute path via Spotlight/find. */

@@ -7,37 +7,94 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/ncruces/zenity"
 )
 
-// pickFolder opens the native OS directory picker via the ncruces/zenity library.
+// ── Directory browser ─────────────────────────────────────────────────────────
 //
-// GET /api/filesystem/pick-folder         — open the dialog
-// GET /api/filesystem/pick-folder?check=1 — probe availability without opening
-func (s *Server) pickFolder(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("check") != "" {
-		writeJSON(w, http.StatusOK, map[string]any{"supported": true})
-		return
-	}
-	path, err := zenity.SelectFile(
-		zenity.Title("Select Project Folder"),
-		zenity.Directory(),
-		zenity.Context(r.Context()),
-	)
-	if err == zenity.ErrCanceled {
-		writeJSON(w, http.StatusOK, map[string]any{"cancelled": true})
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": path})
+// GET /api/filesystem/browse          — list home directory
+// GET /api/filesystem/browse?path=/x  — list arbitrary directory (dirs only)
+
+type browseEntry struct {
+	Name   string `json:"name"`
+	Hidden bool   `json:"hidden"`
 }
 
-// findDir resolves a folder name to candidate absolute paths via Spotlight/find.
-// Used as a fallback when the native picker is unavailable.
+type browseResponse struct {
+	Path    string        `json:"path"`
+	Home    string        `json:"home"`
+	Parent  string        `json:"parent,omitempty"`
+	Entries []browseEntry `json:"entries"`
+}
+
+func (s *Server) browseDirs(w http.ResponseWriter, r *http.Request) {
+	home, _ := os.UserHomeDir()
+
+	reqPath := strings.TrimSpace(r.URL.Query().Get("path"))
+	if reqPath == "" {
+		reqPath = home
+	}
+	// Expand ~ so frontend can send "~" as a shorthand
+	if reqPath == "~" || strings.HasPrefix(reqPath, "~/") {
+		reqPath = home + reqPath[1:]
+	}
+
+	absPath, err := filepath.Abs(reqPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil || !info.IsDir() {
+		writeError(w, http.StatusBadRequest, "path is not a directory")
+		return
+	}
+
+	dirEntries, err := os.ReadDir(absPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot read directory: "+err.Error())
+		return
+	}
+
+	var entries []browseEntry
+	for _, e := range dirEntries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		entries = append(entries, browseEntry{
+			Name:   name,
+			Hidden: strings.HasPrefix(name, "."),
+		})
+	}
+	if entries == nil {
+		entries = []browseEntry{} // always return an array, never null
+	}
+
+	parent := ""
+	if absPath != filepath.Dir(absPath) { // stops at root
+		parent = filepath.Dir(absPath)
+	}
+
+	writeJSON(w, http.StatusOK, browseResponse{
+		Path:    absPath,
+		Home:    home,
+		Parent:  parent,
+		Entries: entries,
+	})
+}
+
+// ── Legacy: zenity native picker (local-machine only) ────────────────────────
+//
+// Kept for reference; no longer wired to any route.
+
+func pickFolderLegacy(path, home string) (string, error) {
+	_ = path
+	_ = home
+	return "", nil
+}
+
+// ── findDir: resolve folder name → candidate paths via Spotlight/find ────────
 //
 // GET /api/filesystem/find-dir?name=loom
 func (s *Server) findDir(w http.ResponseWriter, r *http.Request) {
