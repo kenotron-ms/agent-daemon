@@ -2,44 +2,82 @@ package api
 
 import (
 	"net/http"
-
-	"github.com/ncruces/zenity"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 )
 
-// pickFolder opens the native OS directory picker dialog and returns the
-// selected path. Works on macOS, Windows, and Linux.
+// findDir resolves a folder name to its full absolute path.
+// Called after the browser's showDirectoryPicker() returns a handle.name.
 //
-// GET /api/filesystem/pick-folder          — open the dialog
-// GET /api/filesystem/pick-folder?check=1  — probe support without opening dialog
+// GET /api/filesystem/find-dir?name=loom
 //
-// Uses github.com/ncruces/zenity (no CGO required):
-//   macOS   — osascript (NSOpenPanel via AppleScript)
-//   Windows — Win32 APIs via syscall
-//   Linux   — zenity / matedialog / qarma CLI
-func (s *Server) pickFolder(w http.ResponseWriter, r *http.Request) {
-	// Capability probe — just report availability without opening anything.
-	if r.URL.Query().Get("check") != "" {
-		writeJSON(w, http.StatusOK, map[string]any{"supported": true})
+// macOS  — uses mdfind (Spotlight, ~100ms, no CGO)
+// Linux  — uses find (slower but functional)
+// other  — returns empty list
+func (s *Server) findDir(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"paths": []string{}})
 		return
 	}
 
-	prompt := r.URL.Query().Get("prompt")
-	if prompt == "" {
-		prompt = "Select Project Folder"
+	home, _ := os.UserHomeDir()
+	var paths []string
+
+	switch runtime.GOOS {
+	case "darwin":
+		// mdfind uses Spotlight — fast, no subprocess startup overhead
+		query := `kMDItemKind == "Folder" && kMDItemFSName == "` + name + `"`
+		out, err := exec.CommandContext(r.Context(), "mdfind", "-onlyin", home, query).Output()
+		if err == nil {
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				// Filter out system/library noise — keep user-space dirs only
+				if strings.Contains(line, "/Library/") ||
+					strings.Contains(line, "/Application Support/") ||
+					strings.Contains(line, "/.Trash/") ||
+					strings.Contains(line, "/Cache") {
+					continue
+				}
+				// Prefer root project dirs (those that contain .git or common manifests)
+				if looksLikeProject(line) {
+					paths = append(paths, line)
+				}
+			}
+		}
+
+	case "linux":
+		out, err := exec.CommandContext(r.Context(), "find", home,
+			"-maxdepth", "6", "-type", "d", "-name", name,
+			"-not", "-path", "*/.*").Output()
+		if err == nil {
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" && looksLikeProject(line) {
+					paths = append(paths, line)
+				}
+			}
+		}
 	}
 
-	path, err := zenity.SelectFile(
-		zenity.Title(prompt),
-		zenity.Directory(),
-		zenity.Context(r.Context()),
-	)
-	if err == zenity.ErrCanceled {
-		writeJSON(w, http.StatusOK, map[string]any{"cancelled": true})
-		return
+	writeJSON(w, http.StatusOK, map[string]any{"paths": paths})
+}
+
+// looksLikeProject returns true when a directory looks like a project root.
+// Heuristic: it contains .git, go.mod, package.json, Cargo.toml, pyproject.toml, etc.
+func looksLikeProject(dir string) bool {
+	markers := []string{".git", "go.mod", "package.json", "Cargo.toml",
+		"pyproject.toml", "setup.py", "pom.xml", "build.gradle", "Makefile"}
+	for _, m := range markers {
+		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
+			return true
+		}
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": path, "supported": true})
+	return false
 }

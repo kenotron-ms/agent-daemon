@@ -73,19 +73,12 @@ export async function spawnTerminal(
   return res.json()
 }
 
-/** Opens the native OS folder-picker dialog. Returns the chosen path, or cancelled/supported flags. */
-export async function pickFolder(): Promise<{ path?: string; cancelled?: boolean; supported?: boolean }> {
-  const res = await fetch('/api/filesystem/pick-folder')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
-
-/** Checks whether the native folder picker is available without opening any dialog. */
-export async function canPickFolder(): Promise<boolean> {
-  const res = await fetch('/api/filesystem/pick-folder?check=1')
-  if (!res.ok) return false
+/** Given a directory name (from showDirectoryPicker handle.name), find the full absolute path. */
+export async function findDir(name: string): Promise<string[]> {
+  const res = await fetch(`/api/filesystem/find-dir?name=${encodeURIComponent(name)}`)
+  if (!res.ok) return []
   const data = await res.json()
-  return data.supported === true
+  return data.paths ?? []
 }
 
 export async function deleteSession(projectId: string, sessionId: string): Promise<void> {
