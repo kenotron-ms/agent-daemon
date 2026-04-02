@@ -3,9 +3,34 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 )
+
+// ghBin finds the gh CLI binary, searching common install locations in
+// addition to PATH — necessary when loom runs as a launchd/systemd service
+// that has a stripped PATH (e.g. /opt/homebrew/bin is absent).
+func ghBin() (string, error) {
+	if p, err := exec.LookPath("gh"); err == nil {
+		return p, nil
+	}
+	candidates := []string{
+		"/opt/homebrew/bin/gh",    // macOS Apple Silicon
+		"/usr/local/bin/gh",       // macOS Intel / Linux
+		"/home/linuxbrew/.linuxbrew/bin/gh",
+	}
+	// Also check $HOME/.local/bin and whatever's on PATH
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates, home+"/.local/bin/gh")
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	return "", &exec.Error{Name: "gh", Err: exec.ErrNotFound}
+}
 
 type feedbackRequest struct {
 	Title string `json:"title"`
@@ -35,7 +60,6 @@ func (s *Server) createFeedback(w http.ResponseWriter, r *http.Request) {
 		"issue", "create",
 		"--repo", "kenotron-ms/amplifier-app-loom",
 		"--title", req.Title,
-		"--label", "user-feedback",
 	}
 	if req.Body != "" {
 		args = append(args, "--body", req.Body)
@@ -43,7 +67,12 @@ func (s *Server) createFeedback(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--body", "*(no description provided)*")
 	}
 
-	out, err := exec.CommandContext(r.Context(), "gh", args...).Output()
+	bin, err := ghBin()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "gh CLI not found — install it from https://cli.github.com")
+		return
+	}
+	out, err := exec.CommandContext(r.Context(), bin, args...).Output()
 	if err != nil {
 		// Surface the stderr if available for better diagnostics
 		msg := "failed to create issue: gh CLI error"

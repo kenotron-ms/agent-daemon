@@ -54,7 +54,7 @@ export default function DirectoryBrowserModal({ onSelect, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl flex flex-col"
