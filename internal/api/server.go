@@ -183,6 +183,13 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/filesystem/browse", s.browseDirs)
 	mux.HandleFunc("GET /api/filesystem/find-dir", s.findDir)
 
+	// Registry + app bundle management
+	mux.HandleFunc("GET /api/registry", s.getRegistry)
+	mux.HandleFunc("GET /api/bundles", s.listBundles)
+	mux.HandleFunc("POST /api/bundles", s.addBundle)
+	mux.HandleFunc("DELETE /api/bundles/{id}", s.removeBundle)
+	mux.HandleFunc("POST /api/bundles/{id}/toggle", s.toggleBundle)
+
 	// Feedback → files a GitHub issue via gh CLI
 	mux.HandleFunc("POST /api/feedback", s.createFeedback)
 }

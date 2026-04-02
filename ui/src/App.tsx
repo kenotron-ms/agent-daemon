@@ -2,14 +2,16 @@ import { useState } from 'react'
 import ProjectsView from './views/projects'
 import JobsView from './views/jobs'
 import MirrorView from './views/mirror'
+import BundlesView from './views/bundles'
 import FeedbackModal from './components/FeedbackModal'
 
-type Tab = 'projects' | 'jobs' | 'mirror'
+type Tab = 'projects' | 'jobs' | 'mirror' | 'bundles'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'projects', label: 'Projects' },
   { id: 'jobs',     label: 'Jobs' },
   { id: 'mirror',   label: 'Mirror' },
+  { id: 'bundles',  label: 'Bundles' },
 ]
 
 export default function App() {
@@ -55,6 +57,7 @@ export default function App() {
         {active === 'projects' && <ProjectsView />}
         {active === 'jobs'     && <JobsView />}
         {active === 'mirror'   && <MirrorView />}
+        {active === 'bundles'  && <BundlesView />}
       </div>
 
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}

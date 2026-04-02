@@ -41,6 +41,25 @@ type Config struct {
 	// When false, the full 3-step wizard is shown. When true, only the tray health
 	// indicator's targeted "Fix →" dialog is shown for missing conditions.
 	OnboardingComplete bool `json:"onboardingComplete,omitempty"`
+
+	// AppBundles is the list of Amplifier bundles the user has added via loom.
+	// Each entry tracks the install spec (for re-installation) and enabled state
+	// (for toggling without removing).
+	AppBundles []AppBundle `json:"appBundles,omitempty"`
+}
+
+// AppBundle represents one installed Amplifier app bundle in loom's config.
+type AppBundle struct {
+	// ID is a stable identifier (from the registry, or a slug of the install spec).
+	ID string `json:"id"`
+	// InstallSpec is the argument to `amplifier bundle add --app …`.
+	// Derived from the registry's `install` field by trimming "amplifier bundle add ".
+	// Examples: "superpowers", "git+https://github.com/…@main", "foundation:explorer"
+	InstallSpec string `json:"installSpec"`
+	// Name is a display name (from the registry, or the InstallSpec itself).
+	Name string `json:"name,omitempty"`
+	// Enabled controls whether this bundle is composed into new sessions.
+	Enabled bool `json:"enabled"`
 }
 
 func Defaults() *Config {
