@@ -90,10 +90,10 @@ function BundleCard({
           href={entry.repo}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[9px] text-[#484f58] hover:text-[#58a6ff] truncate"
+          className="text-[10px] text-[#58a6ff] hover:underline truncate font-mono"
           title={entry.repo}
         >
-          {entry.author}
+          {entry.repo.replace('https://github.com/', '')}
         </a>
         {installed ? (
           <button
@@ -272,6 +272,27 @@ export default function BundlesView() {
 
       {/* ── Right: Registry browser ─────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Registry header */}
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-[#21262d] bg-gradient-to-r from-[#0d1117] to-[#161b22] shrink-0">
+          <span className="text-[10px] text-[#484f58] uppercase tracking-wider">Amplifier Registry</span>
+          <a
+            href="https://kenotron-ms.github.io/amplifier-registry/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] font-medium text-[#f0883e] hover:text-[#ffa657] hover:underline transition-colors"
+          >
+            🌐 Browse Site
+          </a>
+          <a
+            href="https://github.com/kenotron-ms/amplifier-registry"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] font-medium text-[#58a6ff] hover:text-[#79c0ff] hover:underline transition-colors"
+          >
+            ⎇ GitHub Source
+          </a>
+        </div>
+
         {/* Search + filters */}
         <div className="px-4 py-3 border-b border-[#30363d] shrink-0 space-y-2">
           <input
