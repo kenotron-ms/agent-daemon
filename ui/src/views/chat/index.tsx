@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { ChatMessage, sendChat, getChatHistory, clearChatHistory } from '../../api/chat'
 
 interface Props {
-  onResponse?: () => void  // called after every assistant reply — lets Jobs refresh the list
+  onResponse?: () => void
 }
 
 export default function ChatView({ onResponse }: Props = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [input, setInput]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -66,64 +66,140 @@ export default function ChatView({ onResponse }: Props = {}) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0d1117]">
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      background: 'var(--bg-right)',
+    }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d] shrink-0">
-        <span className="text-sm font-semibold text-[#e6edf3]">AI Assistant</span>
-        <button onClick={handleClear} className="text-xs text-[#8b949e] hover:text-[#f85149]">
-          Clear history
-        </button>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 16px',
+        height: 32,
+        background: 'var(--bg-pane-title)',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 600,
+          textTransform: 'uppercase', letterSpacing: '0.08em',
+          color: 'var(--text-very-muted)',
+        }}>AI Assistant</span>
+        <button
+          onClick={handleClear}
+          style={{
+            fontSize: 10, color: 'var(--text-very-muted)',
+            background: 'none', border: 'none', cursor: 'pointer',
+          }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--red)'}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
+        >Clear history</button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }} className="canvas-scroll">
         {messages.length === 0 && (
-          <div className="text-sm text-[#8b949e] text-center mt-8">
-            Describe what you want — I'll create or manage jobs for you.
-            <div className="text-xs mt-2 text-[#484f58]">e.g. "Create a daily digest job" or "Run the backup job now"</div>
+          <div style={{ textAlign: 'center', marginTop: 32 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+              Describe what you want — I'll create or manage jobs for you.
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-very-muted)' }}>
+              e.g. "Create a daily digest job" or "Run the backup job now"
+            </div>
           </div>
         )}
         {messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={[
-              'max-w-[75%] rounded-lg px-3 py-2 text-sm',
-              msg.role === 'user' ? 'bg-[#1f6feb] text-white' : 'bg-[#21262d] text-[#e6edf3]',
-            ].join(' ')}>
-              <pre className="whitespace-pre-wrap font-sans m-0">{msg.content}</pre>
+          <div
+            key={msg.id}
+            style={{
+              display: 'flex',
+              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+            }}
+          >
+            <div style={{
+              maxWidth: '78%',
+              padding: '8px 12px',
+              borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+              fontSize: 13,
+              lineHeight: 1.5,
+              background: msg.role === 'user'
+                ? 'var(--amber)'
+                : 'var(--bg-pane-title)',
+              color: msg.role === 'user'
+                ? '#1C1A16'
+                : 'var(--text-primary)',
+              border: msg.role === 'user'
+                ? 'none'
+                : '1px solid var(--border)',
+            }}>
+              <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>{msg.content}</pre>
             </div>
           </div>
         ))}
         {loading && (
-          <div className="flex justify-start">
-            <div className="bg-[#21262d] text-[#8b949e] rounded-lg px-3 py-2 text-sm">thinking…</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div style={{
+              padding: '8px 12px',
+              background: 'var(--bg-pane-title)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px 12px 12px 2px',
+              fontSize: 12,
+              color: 'var(--text-very-muted)',
+            }}>thinking…</div>
           </div>
         )}
         {error && (
-          <div className="text-xs text-[#f85149] bg-[#3a1a1a] rounded px-3 py-2">{error}</div>
+          <div style={{
+            fontSize: 11, color: 'var(--red)',
+            background: 'rgba(229,57,53,0.06)',
+            border: '1px solid rgba(229,57,53,0.20)',
+            borderRadius: 4, padding: '8px 12px',
+          }}>{error}</div>
         )}
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
-      <div className="px-4 py-3 border-t border-[#30363d] shrink-0">
-        <div className="flex gap-2">
-          <input
-            className="flex-1 px-3 py-1.5 text-sm bg-[#161b22] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#484f58] focus:outline-none focus:border-[#58a6ff]"
-            placeholder="Describe what you want…"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            disabled={loading}
-            autoFocus
-          />
-          <button
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="px-3 py-1.5 text-xs bg-[#238636] hover:bg-[#2ea043] disabled:opacity-40 text-white rounded"
-          >
-            Send
-          </button>
-        </div>
+      <div style={{
+        padding: '10px 14px',
+        borderTop: '1px solid var(--border)',
+        flexShrink: 0,
+        display: 'flex', gap: 8,
+      }}>
+        <input
+          style={{
+            flex: 1,
+            padding: '7px 10px',
+            fontSize: 13,
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border)',
+            borderRadius: 3,
+            color: 'var(--text-primary)',
+            outline: 'none',
+            fontFamily: 'var(--font-ui)',
+          }}
+          placeholder="Describe what you want…"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+          disabled={loading}
+          autoFocus
+          onFocus={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--amber)'}
+          onBlur={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'}
+        />
+        <button
+          onClick={handleSend}
+          disabled={loading || !input.trim()}
+          style={{
+            padding: '7px 14px',
+            fontSize: 12,
+            background: 'var(--bg-modal)',
+            border: '1px solid var(--border-dark)',
+            borderRadius: 3,
+            color: 'var(--text-primary)',
+            cursor: 'pointer',
+            opacity: (loading || !input.trim()) ? 0.4 : 1,
+          }}
+        >Send →</button>
       </div>
     </div>
   )

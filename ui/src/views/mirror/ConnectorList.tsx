@@ -6,42 +6,90 @@ interface Props {
   onSelect: (id: string) => void
 }
 
-export default function ConnectorList({ connectors, selectedId, onSelect }: Props) {
-  const healthDot = (health: string) => {
-    const color = health === 'live' ? '#3fb950' : health === 'error' ? '#f85149' : '#8b949e'
-    return (
-      <span
-        style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }}
-      />
-    )
-  }
-
+function HealthDot({ health }: { health: string }) {
+  const color = health === 'live'
+    ? 'var(--green)'
+    : health === 'error'
+    ? 'var(--red)'
+    : 'var(--text-very-muted)'
   return (
-    <div className="flex flex-col h-full bg-[#0d1117] border-r border-[#30363d] w-52 shrink-0">
-      <div className="px-3 py-2 border-b border-[#30363d]">
-        <span className="text-[#8b949e] text-xs uppercase tracking-wider">Connectors</span>
+    <span style={{
+      width: 6, height: 6, borderRadius: '50%',
+      background: color,
+      display: 'inline-block', flexShrink: 0,
+    }} />
+  )
+}
+
+export default function ConnectorList({ connectors, selectedId, onSelect }: Props) {
+  return (
+    <div style={{
+      width: 200,
+      flexShrink: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'var(--bg-sidebar)',
+      borderRight: '1px solid var(--border)',
+      height: '100%',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '0 12px',
+        height: 32,
+        display: 'flex', alignItems: 'center',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 600,
+          textTransform: 'uppercase', letterSpacing: '0.08em',
+          color: 'var(--text-very-muted)',
+        }}>Connectors</span>
       </div>
-      <div className="flex-1 overflow-y-auto">
+
+      {/* List */}
+      <div style={{ flex: 1, overflowY: 'auto' }} className="canvas-scroll">
         {connectors.map(c => (
           <button
             key={c.id}
             onClick={() => onSelect(c.id)}
-            className={[
-              'w-full text-left px-3 py-2 border-b border-[#21262d] hover:bg-[#161b22] transition-colors',
-              selectedId === c.id ? 'bg-[#21262d]' : '',
-            ].join(' ')}
+            style={{
+              width: '100%', textAlign: 'left',
+              padding: '7px 12px 7px 14px',
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: selectedId === c.id ? 'var(--bg-sidebar-active)' : 'transparent',
+              borderLeft: selectedId === c.id ? '2px solid var(--amber)' : '2px solid transparent',
+              borderBottom: '1px solid var(--border)',
+              cursor: 'pointer',
+              transition: 'background 0.12s ease',
+            }}
+            onMouseEnter={e => {
+              if (selectedId !== c.id)
+                (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.03)'
+            }}
+            onMouseLeave={e => {
+              if (selectedId !== c.id)
+                (e.currentTarget as HTMLElement).style.background = 'transparent'
+            }}
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className={`text-xs truncate ${selectedId === c.id ? 'text-[#e6edf3]' : 'text-[#8b949e]'}`}>
-                {c.name}
-              </span>
-              {healthDot(c.health)}
+            <HealthDot health={c.health} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{
+                fontSize: 12,
+                fontWeight: selectedId === c.id ? 500 : 400,
+                color: selectedId === c.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{c.name}</div>
+              <div style={{ fontSize: 10, color: 'var(--text-very-muted)', marginTop: 2 }}>
+                {c.type}
+              </div>
             </div>
-            <div className="text-[10px] text-[#8b949e] mt-0.5">{c.type}</div>
           </button>
         ))}
         {connectors.length === 0 && (
-          <div className="px-3 py-4 text-xs text-[#8b949e]">No connectors configured</div>
+          <div style={{ padding: '16px 14px', fontSize: 11, color: 'var(--text-very-muted)' }}>
+            No connectors configured
+          </div>
         )}
       </div>
     </div>

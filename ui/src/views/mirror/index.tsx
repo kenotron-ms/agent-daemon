@@ -17,16 +17,21 @@ export default function MirrorView() {
   const selected = connectors.find(c => c.id === selectedId) ?? null
 
   return (
-    <div className="flex h-full">
+    <div style={{ display: 'flex', height: '100%', background: 'var(--bg-page)' }}>
       <ConnectorList
         connectors={connectors}
         selectedId={selectedId}
         onSelect={setSelectedId}
       />
-      <div className="flex-1 overflow-hidden">
+      <div style={{ flex: 1, overflow: 'hidden' }}>
         {selected
           ? <EntityBrowser connector={selected} />
-          : <div className="p-8 text-[#8b949e] text-sm">Select a connector to browse entities</div>
+          : (
+            <div style={{
+              padding: 32, fontSize: 12,
+              color: 'var(--text-very-muted)',
+            }}>Select a connector to browse entities</div>
+          )
         }
       </div>
     </div>

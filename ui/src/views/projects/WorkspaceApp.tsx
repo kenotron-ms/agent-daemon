@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import {
   Project, Session,
@@ -11,24 +10,126 @@ import SessionStatsPanel from './SessionStats'
 import { TerminalPanel } from './terminal/TerminalPanel'
 import DirectoryBrowserModal from '../../components/DirectoryBrowserModal'
 
+// ── Status dot ──────────────────────────────────────────────────────────────
+
+function SessionDot({ status }: { status: string }) {
+  const isRunning = status === 'running' || status === 'active'
+  const isDone = status === 'done' || status === 'completed'
+
+  if (isDone) {
+    return (
+      <span style={{
+        width: 14, height: 14, borderRadius: '50%',
+        background: 'var(--green)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+        fontSize: 8, fontWeight: 700, color: '#fff',
+      }}>✓</span>
+    )
+  }
+  return (
+    <span style={{
+      width: 6, height: 6, borderRadius: '50%',
+      background: isRunning ? 'var(--amber)' : 'var(--text-very-muted)',
+      display: 'inline-block', flexShrink: 0,
+    }} />
+  )
+}
+
+// ── Pane title strip ─────────────────────────────────────────────────────────
+
+function PaneTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      height: 28,
+      display: 'flex', alignItems: 'center',
+      padding: '0 14px',
+      background: 'var(--bg-pane-title)',
+      borderBottom: '1px solid var(--border)',
+      fontSize: 10,
+      fontFamily: 'var(--font-ui)',
+      fontWeight: 600,
+      textTransform: 'uppercase',
+      letterSpacing: '0.08em',
+      color: 'var(--text-very-muted)',
+      flexShrink: 0,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+// ── App preview panel ────────────────────────────────────────────────────────
+
+function AppPreviewPanel() {
+  const [url, setUrl] = useState('http://localhost:3000')
+  const [inputUrl, setInputUrl] = useState('http://localhost:3000')
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Address bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '4px 8px',
+        background: 'var(--bg-pane-title)',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
+        <input
+          value={inputUrl}
+          onChange={e => setInputUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && setUrl(inputUrl)}
+          style={{
+            flex: 1,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border)',
+            borderRadius: 3,
+            padding: '2px 8px',
+            outline: 'none',
+          }}
+        />
+        <button
+          onClick={() => setUrl(inputUrl)}
+          style={{
+            fontSize: 10,
+            padding: '2px 8px',
+            background: 'var(--bg-pane-title)',
+            border: '1px solid var(--border-dark)',
+            borderRadius: 3,
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+          }}
+        >Go</button>
+      </div>
+      <iframe
+        src={url}
+        style={{ flex: 1, width: '100%', border: 'none' }}
+        title="App preview"
+      />
+    </div>
+  )
+}
+
 // ── Main workspace ────────────────────────────────────────────────────────────
 
 export default function WorkspaceApp() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [sessions, setSessions] = useState<Session[]>([])
+  const [projects, setProjects]       = useState<Project[]>([])
+  const [sessions, setSessions]       = useState<Session[]>([])
   const [activeProject, setActiveProject] = useState<Project | null>(null)
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   // Grove pattern: keep ALL seen processIds in DOM, show active via visibility:hidden
   const [liveProcessIds, setLiveProcessIds] = useState<Set<string>>(new Set())
   const [activeProcessId, setActiveProcessId] = useState<string | null>(null)
-  const [rightPanel, setRightPanel]     = useState<'files' | 'stats'>('files')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [rightPanel, setRightPanel]   = useState<'files' | 'app' | 'analysis'>('files')
+  const [rightHidden, setRightHidden] = useState(false)
 
   // New Project modal
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectPath, setNewProjectPath] = useState('')
   const [showDirBrowser, setShowDirBrowser] = useState(false)
-
   const [creatingSession, setCreatingSession] = useState(false)
 
   useEffect(() => {
@@ -40,7 +141,7 @@ export default function WorkspaceApp() {
       .catch(console.error)
   }, [])
 
-  // Poll session names every 5 s — picks up amplifier's auto-naming hook
+  // Poll session names every 5s — picks up amplifier's auto-naming hook
   useEffect(() => {
     if (!activeProject) return
     const id = setInterval(async () => {
@@ -70,7 +171,6 @@ export default function WorkspaceApp() {
     try {
       const { processId: pid } = await spawnTerminal(p.id, s.id)
       setActiveProcessId(pid)
-      // Register processId as live — TerminalPanel keeps it in DOM with visibility:hidden
       setLiveProcessIds(prev => {
         if (prev.has(pid)) return prev
         const next = new Set(prev)
@@ -91,7 +191,6 @@ export default function WorkspaceApp() {
         setActiveSession(null)
         setActiveProcessId(null)
         setLiveProcessIds(new Set())
-        setRightPanel('files')
       }
     } catch (e) { console.error('deleteProject:', e) }
   }
@@ -103,14 +202,6 @@ export default function WorkspaceApp() {
       if (activeSession?.id === sessionId) {
         setActiveSession(null)
         setActiveProcessId(null)
-        // Clean up the terminal buffer from the registry
-        const reg = (window as any).__terminalRegistry
-        if (reg) {
-          // The processId for this session is in liveProcessIds — find and clean it up
-          reg.buffers.delete(activeProcessId)
-          reg.terminals.delete(activeProcessId)
-        }
-        setRightPanel('files')
       }
     } catch (e) { console.error('deleteSession:', e) }
   }
@@ -123,7 +214,6 @@ export default function WorkspaceApp() {
       setProjects(ps => [...ps, p])
       setShowNewProject(false)
       setNewProjectPath('')
-      // Auto-create first session — name derived from git branch on the backend
       await createSession(p.id, '').catch(() => {})
       selectProject(p)
     } catch (e) {
@@ -146,146 +236,299 @@ export default function WorkspaceApp() {
   }
 
   return (
-    <div className="flex h-full bg-[#0d1117]">
-      {/* Left sidebar */}
-      <div className="w-56 border-r border-[#30363d] flex flex-col shrink-0">
-        {/* Project list */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[#30363d]">
-          <span className="text-[#8b949e] text-[10px] uppercase tracking-wider">Projects</span>
+    <div style={{ display: 'flex', height: '100%', background: 'var(--bg-page)' }}>
+
+      {/* ── Left sidebar (200px) ──────────────────────────────────────── */}
+      <div style={{
+        width: 200,
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg-sidebar)',
+        borderRight: '1px solid var(--border)',
+        overflow: 'hidden',
+      }}>
+        {/* Projects section header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 12px',
+          height: 32,
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}>
+          <span style={{
+            fontSize: 10, fontWeight: 600,
+            textTransform: 'uppercase', letterSpacing: '0.08em',
+            color: 'var(--text-very-muted)',
+          }}>Projects</span>
           <button
             onClick={() => setShowNewProject(true)}
-            className="text-[#58a6ff] text-xs hover:text-[#e6edf3]"
+            style={{
+              fontSize: 14, lineHeight: 1,
+              color: 'var(--text-muted)',
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '0 2px',
+            }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--amber)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'}
             aria-label="New project"
+            title="New project"
           >+</button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+
+        {/* Project list */}
+        <div style={{ flex: 1, overflowY: 'auto' }} className="canvas-scroll">
+          {projects.length === 0 && (
+            <div style={{
+              padding: '16px 12px',
+              fontSize: 11, color: 'var(--text-very-muted)', textAlign: 'center',
+            }}>No projects yet</div>
+          )}
           {projects.map(p => (
             <div
               key={p.id}
-              className={[
-                'group flex items-center border-b border-[#21262d] transition-colors',
-                activeProject?.id === p.id ? 'bg-[#21262d]' : 'hover:bg-[#161b22]',
-              ].join(' ')}
+              className="group"
+              style={{
+                display: 'flex', alignItems: 'center',
+                borderBottom: '1px solid var(--border)',
+                transition: 'background 0.12s ease',
+                background: activeProject?.id === p.id ? 'var(--bg-sidebar-active)' : 'transparent',
+              }}
+              onMouseEnter={e => {
+                if (activeProject?.id !== p.id)
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.03)'
+              }}
+              onMouseLeave={e => {
+                if (activeProject?.id !== p.id)
+                  (e.currentTarget as HTMLElement).style.background = 'transparent'
+              }}
             >
               <button
                 onClick={() => selectProject(p)}
-                className="flex-1 text-left px-3 py-2 min-w-0"
+                style={{
+                  flex: 1, textAlign: 'left',
+                  padding: '7px 12px 7px 14px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  borderLeft: activeProject?.id === p.id ? '2px solid var(--amber)' : '2px solid transparent',
+                  minWidth: 0,
+                }}
               >
-                <div className={`text-xs truncate ${activeProject?.id === p.id ? 'text-[#e6edf3]' : 'text-[#8b949e]'}`}>
-                  {p.name}
-                </div>
+                <span style={{
+                  fontSize: 12, fontWeight: activeProject?.id === p.id ? 500 : 400,
+                  color: activeProject?.id === p.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{p.name}</span>
               </button>
               <button
                 onClick={() => handleDeleteProject(p.id)}
-                className="opacity-0 group-hover:opacity-100 px-2 py-2 text-[#484f58] hover:text-[#f85149] text-xs shrink-0"
-                title="Delete project"
+                style={{
+                  padding: '7px 8px',
+                  fontSize: 13, color: 'var(--text-very-muted)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  opacity: 0, flexShrink: 0,
+                }}
+                className="delete-btn"
+                title="Remove project"
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--red)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
               >×</button>
             </div>
           ))}
-        </div>
 
-        {/* Session list for active project */}
-        {activeProject && (
-          <>
-            <div className="flex items-center justify-between px-3 py-2 border-t border-b border-[#30363d]">
-              <span className="text-[#8b949e] text-[10px] uppercase tracking-wider">Sessions</span>
-              <button
-                onClick={handleCreateSession}
-                disabled={creatingSession}
-                className="text-[#58a6ff] text-xs hover:text-[#e6edf3] disabled:opacity-40"
-                aria-label="New session"
-              >{creatingSession ? '…' : '+'}</button>
-            </div>
-            {sessions.length === 0 && (
-              <div className="px-3 py-2 text-[10px] text-[#484f58]">No sessions yet</div>
-            )}
-            {sessions.map(s => (
-              <div
-                key={s.id}
-                className={[
-                  'group flex items-center border-b border-[#21262d] transition-colors',
-                  activeSession?.id === s.id ? 'bg-[#21262d]' : 'hover:bg-[#161b22]',
-                ].join(' ')}
-              >
-                <button
-                  onClick={() => selectSession(activeProject, s)}
-                  className="flex-1 text-left px-3 py-1.5 min-w-0"
+          {/* Sessions for active project */}
+          {activeProject && sessions.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--border)', marginTop: 4 }}>
+              {sessions.map(s => (
+                <div
+                  key={s.id}
+                  style={{
+                    display: 'flex', alignItems: 'center',
+                    borderBottom: '1px solid var(--border)',
+                    transition: 'background 0.12s ease',
+                    background: activeSession?.id === s.id ? 'var(--bg-sidebar-active)' : 'transparent',
+                  }}
+                  onMouseEnter={e => {
+                    if (activeSession?.id !== s.id)
+                      (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.03)'
+                  }}
+                  onMouseLeave={e => {
+                    if (activeSession?.id !== s.id)
+                      (e.currentTarget as HTMLElement).style.background = 'transparent'
+                  }}
                 >
-                  <div className={`text-[11px] truncate ${activeSession?.id === s.id ? 'text-[#e6edf3]' : 'text-[#8b949e]'}`}>
-                    {s.name}
-                  </div>
-                  <div className="text-[10px] text-[#484f58]">{s.status}</div>
-                </button>
-                <button
-                  onClick={() => handleDeleteSession(activeProject.id, s.id)}
-                  className="opacity-0 group-hover:opacity-100 px-2 py-1.5 text-[#484f58] hover:text-[#f85149] text-xs shrink-0"
-                  title="Close session"
-                >×</button>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-
-      {/* Main area — resizable split between terminal and right panel */}
-      <PanelGroup direction="horizontal" className="flex-1 overflow-hidden">
-        <Panel minSize={20} className="flex flex-col overflow-hidden">
-          {/* Session header — only shown when a session is active */}
-          {activeProject && activeSession && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] shrink-0">
-              <span className="text-xs text-[#e6edf3] font-medium">{activeProject.name}</span>
-              <span className="text-xs text-[#8b949e]">/ {activeSession.name}</span>
-              <button
-                onClick={() => setSidebarCollapsed(c => !c)}
-                className="ml-auto text-[#484f58] hover:text-[#8b949e] transition-colors"
-                title={sidebarCollapsed ? 'Show panel' : 'Hide panel'}
-              >
-                {sidebarCollapsed
-                  ? <PanelRightOpen className="w-3.5 h-3.5" />
-                  : <PanelRightClose className="w-3.5 h-3.5" />
-                }
-              </button>
+                  <button
+                    onClick={() => selectSession(activeProject, s)}
+                    style={{
+                      flex: 1, textAlign: 'left',
+                      padding: '6px 12px 6px 14px',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      borderLeft: activeSession?.id === s.id ? '2px solid var(--amber)' : '2px solid transparent',
+                      minWidth: 0,
+                    }}
+                  >
+                    <SessionDot status={s.status ?? 'active'} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 11.5,
+                        fontWeight: activeSession?.id === s.id ? 500 : 400,
+                        color: activeSession?.id === s.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{s.name || 'Session'}</div>
+                      {s.status && s.status !== 'active' && (
+                        <div style={{ fontSize: 10, color: 'var(--text-very-muted)', marginTop: 1 }}>
+                          {s.status}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSession(activeProject.id, s.id)}
+                    style={{
+                      padding: '6px 8px',
+                      fontSize: 13, color: 'var(--text-very-muted)',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      opacity: 0, flexShrink: 0,
+                    }}
+                    className="delete-btn"
+                    title="Close session"
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--red)'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
+                  >×</button>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Content area — terminal container is ALWAYS in DOM so instances persist */}
-          <div className="flex-1 overflow-hidden relative">
-            {/* Empty state overlay — covers the (invisible) terminal when no session */}
+          {/* New session link */}
+          {activeProject && (
+            <button
+              onClick={handleCreateSession}
+              disabled={creatingSession}
+              style={{
+                width: '100%', textAlign: 'left',
+                padding: '7px 14px',
+                fontSize: 11, color: 'var(--text-very-muted)',
+                background: 'none', border: 'none', cursor: 'pointer',
+                opacity: creatingSession ? 0.5 : 1,
+              }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--amber)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
+            >
+              {creatingSession ? '…' : '+ New session'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Main area: terminal + right panel ─────────────────────────── */}
+      <PanelGroup direction="horizontal" style={{ flex: 1, overflow: 'hidden' }}>
+        <Panel minSize={20} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+          {/* Pane title strip */}
+          {activeProject && activeSession ? (
+            <div style={{
+              height: 28,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0 14px',
+              background: 'var(--bg-pane-title)',
+              borderBottom: '1px solid var(--border)',
+              flexShrink: 0,
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>
+                  {activeProject.name}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-very-muted)' }}>·</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {activeSession.name || 'Session'}
+                </span>
+              </span>
+              <button
+                onClick={() => setRightHidden(h => !h)}
+                style={{
+                  fontSize: 10, color: 'var(--text-very-muted)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  letterSpacing: '0.04em',
+                }}
+                title={rightHidden ? 'Show panel' : 'Hide panel'}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
+              >
+                {rightHidden ? '⊞' : '⊟'}
+              </button>
+            </div>
+          ) : (
+            <PaneTitle>
+              {activeProject ? activeProject.name : 'Canvas'}
+            </PaneTitle>
+          )}
+
+          {/* Terminal / empty state */}
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative', background: 'var(--bg-terminal)' }}>
+            {/* Empty state */}
             {(!activeProject || !activeSession) && (
-              <div className="absolute inset-0 flex items-center justify-center z-10 bg-[#0d1117]">
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                zIndex: 10,
+                background: 'var(--bg-page)',
+              }}>
                 {activeProject ? (
-                  <div className="text-center text-[#8b949e]">
-                    <div className="text-sm font-medium text-[#e6edf3] mb-1">{activeProject.name}</div>
-                    <div className="text-xs mb-3 text-[#484f58]">{activeProject.path}</div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6, fontStyle: 'italic', letterSpacing: '-0.02em' }}>
+                      {activeProject.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
+                      {activeProject.path}
+                    </div>
                     <button
                       onClick={handleCreateSession}
                       disabled={creatingSession}
-                      className="text-xs px-3 py-1.5 bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d] disabled:opacity-40"
+                      style={{
+                        fontSize: 13, padding: '7px 16px',
+                        background: 'var(--bg-modal)',
+                        border: '1px solid var(--border-dark)',
+                        borderRadius: 4, cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                        opacity: creatingSession ? 0.5 : 1,
+                      }}
                     >
-                      {creatingSession ? 'Starting…' : '+ New Session'}
+                      {creatingSession ? 'Starting…' : 'Start session →'}
                     </button>
                   </div>
                 ) : (
-                  <div className="text-center text-[#8b949e]">
-                    <div className="text-sm mb-2">Select or create a project</div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10, fontStyle: 'italic', letterSpacing: '-0.02em' }}>
+                      Welcome to Canvas
+                    </div>
+                    <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 24, maxWidth: 340, lineHeight: 1.5 }}>
+                      Amplifier is a powerful engine with no cockpit. Canvas is the cockpit.
+                    </div>
                     <button
                       onClick={() => setShowNewProject(true)}
-                      className="text-xs px-3 py-1.5 bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d]"
+                      style={{
+                        fontSize: 13, padding: '8px 18px',
+                        background: 'var(--bg-modal)',
+                        border: '1px solid var(--border-dark)',
+                        borderRadius: 4, cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                      }}
                     >
-                      + New Project
+                      Create your first project →
                     </button>
                   </div>
                 )}
               </div>
             )}
 
-            {/* One TerminalPanel per live processId — grove pattern: visibility:hidden keeps them alive */}
+            {/* Grove pattern: all live terminals in DOM */}
             {Array.from(liveProcessIds).map(pid => (
               <div
                 key={pid}
                 style={{
-                  position: 'absolute',
-                  inset: 0,
+                  position: 'absolute', inset: 0,
                   visibility: pid === activeProcessId ? 'visible' : 'hidden',
                   pointerEvents: pid === activeProcessId ? 'auto' : 'none',
                 }}
@@ -296,39 +539,70 @@ export default function WorkspaceApp() {
           </div>
         </Panel>
 
-        {activeProject && activeSession && !sidebarCollapsed && (
+        {/* ── Right panel ────────────────────────────────────────────── */}
+        {activeProject && activeSession && !rightHidden && (
           <>
-            <PanelResizeHandle className="w-1 bg-[#30363d] hover:bg-[#58a6ff] transition-colors cursor-col-resize" />
-            <Panel defaultSize={40} minSize={20} className="flex flex-col overflow-hidden">
-              {/* Right panel tab bar */}
-              <div className="flex items-center border-b border-[#30363d] bg-[#161b22] shrink-0">
-                {(['files', 'stats'] as const).map(tab => (
+            <PanelResizeHandle style={{
+              width: 1,
+              background: 'var(--border)',
+              cursor: 'col-resize',
+              flexShrink: 0,
+            }} />
+            <Panel defaultSize={36} minSize={18} style={{
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              background: 'var(--bg-right)',
+            }}>
+              {/* Tab bar */}
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                height: 30,
+                background: 'var(--bg-right)',
+                borderBottom: '1px solid var(--border)',
+                flexShrink: 0,
+                gap: 0,
+              }}>
+                {(['files', 'app', 'analysis'] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setRightPanel(tab)}
-                    className={[
-                      'px-4 py-1.5 text-[11px] capitalize border-b-2 transition-colors',
-                      rightPanel === tab
-                        ? 'border-[#58a6ff] text-[#e6edf3]'
-                        : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]',
-                    ].join(' ')}
+                    style={{
+                      height: '100%',
+                      padding: '0 14px',
+                      fontSize: 11.5,
+                      fontWeight: rightPanel === tab ? 500 : 400,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: rightPanel === tab ? 'var(--text-primary)' : 'var(--text-very-muted)',
+                      background: 'transparent',
+                      border: 'none',
+                      borderBottom: rightPanel === tab ? '2px solid var(--amber)' : '2px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'color 0.12s ease',
+                    }}
+                    onMouseEnter={e => {
+                      if (rightPanel !== tab)
+                        (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'
+                    }}
+                    onMouseLeave={e => {
+                      if (rightPanel !== tab)
+                        (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'
+                    }}
                   >
                     {tab}
                   </button>
                 ))}
               </div>
-              {rightPanel === 'files' && (
-                <FileViewer projectId={activeProject.id} sessionId={activeSession.id} />
-              )}
-              {rightPanel === 'stats' && (
-                <SessionStatsPanel project={activeProject} session={activeSession} />
-              )}
+
+              {/* Panel content */}
+              {rightPanel === 'files'    && <FileViewer projectId={activeProject.id} sessionId={activeSession.id} />}
+              {rightPanel === 'app'      && <AppPreviewPanel />}
+              {rightPanel === 'analysis' && <SessionStatsPanel project={activeProject} session={activeSession} />}
             </Panel>
           </>
         )}
       </PanelGroup>
 
-      {/* Server-side directory browser */}
+      {/* ── Directory browser modal ─────────────────────────────────── */}
       {showDirBrowser && (
         <DirectoryBrowserModal
           onSelect={p => { setNewProjectPath(p); setShowDirBrowser(false) }}
@@ -336,43 +610,113 @@ export default function WorkspaceApp() {
         />
       )}
 
-      {/* New Project modal */}
+      {/* ── New Project modal ──────────────────────────────────────── */}
       {showNewProject && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-5 w-80">
-            <h3 className="text-sm font-semibold text-[#e6edf3] mb-4">Open Project</h3>
-            <div className="flex gap-2 mb-4">
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(20,16,10,0.18)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 50,
+        }}
+          onClick={e => { if (e.target === e.currentTarget) setShowNewProject(false) }}
+        >
+          <div style={{
+            background: 'var(--bg-modal)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            padding: 24,
+            width: 400,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                New Project
+              </h3>
+              <button
+                onClick={() => setShowNewProject(false)}
+                style={{
+                  fontSize: 16, color: 'var(--text-very-muted)',
+                  background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1,
+                }}
+              >×</button>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border)', marginBottom: 16 }} />
+
+            {/* Folder path */}
+            <label style={{
+              display: 'block', fontSize: 10, fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.08em',
+              color: 'var(--text-very-muted)', marginBottom: 6,
+            }}>Folder</label>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
               <input
-                className="flex-1 px-3 py-1.5 text-sm bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#8b949e] focus:outline-none focus:border-[#58a6ff]"
-                placeholder="/absolute/path/to/codebase"
+                style={{
+                  flex: 1,
+                  padding: '7px 10px',
+                  fontSize: 13,
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 3,
+                  color: 'var(--text-muted)',
+                  outline: 'none',
+                }}
+                placeholder="/absolute/path/to/project"
                 value={newProjectPath}
                 autoFocus
                 onChange={e => setNewProjectPath(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
+                onFocus={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--amber)'}
+                onBlur={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'}
               />
               <button
                 onClick={() => setShowDirBrowser(true)}
                 type="button"
-                className="px-3 py-1.5 text-xs bg-[#21262d] border border-[#30363d] rounded text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] shrink-0"
-              >
-                Browse…
-              </button>
+                style={{
+                  padding: '7px 12px',
+                  fontSize: 12,
+                  background: 'var(--bg-pane-title)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 3,
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >Browse…</button>
             </div>
-            <div className="flex gap-2 justify-end">
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setShowNewProject(false)}
-                className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3]"
+                style={{
+                  padding: '7px 14px', fontSize: 13,
+                  color: 'var(--text-muted)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                }}
               >Cancel</button>
               <button
                 onClick={handleCreateProject}
-                className="px-3 py-1.5 text-xs bg-[#238636] hover:bg-[#2ea043] text-white rounded"
-              >Create</button>
+                style={{
+                  padding: '7px 16px', fontSize: 13,
+                  background: 'var(--bg-modal)',
+                  border: '1px solid var(--border-dark)',
+                  borderRadius: 4,
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                }}
+              >Create project →</button>
             </div>
           </div>
         </div>
       )}
 
-
+      {/* Hover reveal for delete buttons */}
+      <style>{`
+        .group:hover .delete-btn { opacity: 1 !important; }
+        [data-panel-resize-handle-id]:hover { background: var(--amber) !important; }
+      `}</style>
     </div>
   )
 }

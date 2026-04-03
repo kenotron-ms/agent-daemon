@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Connector, Entity, listEntities } from '../../api/mirror'
 
-/** Handle data that might be a raw JSON string (double-encoded) or already an object. */
 function renderData(data: unknown): string {
   if (typeof data === 'string') {
     try { return JSON.stringify(JSON.parse(data), null, 2) } catch { return data }
@@ -9,9 +8,7 @@ function renderData(data: unknown): string {
   return JSON.stringify(data, null, 2)
 }
 
-interface Props {
-  connector: Connector
-}
+interface Props { connector: Connector }
 
 export default function EntityBrowser({ connector }: Props) {
   const [entities, setEntities] = useState<Entity[]>([])
@@ -24,42 +21,79 @@ export default function EntityBrowser({ connector }: Props) {
   }, [connector.id])
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 py-2 bg-[#161b22] border-b border-[#30363d] shrink-0">
-        <span className="text-sm font-semibold text-[#e6edf3]">{connector.name}</span>
-        <span className="ml-2 text-xs text-[#8b949e]">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-right)' }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '0 16px',
+        height: 32,
+        background: 'var(--bg-pane-title)',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>
+          {connector.name}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--text-very-muted)' }}>
           {entities.length} entities
-          {connector.lastSyncAt && ` · last sync ${new Date(connector.lastSyncAt).toLocaleTimeString()}`}
+          {connector.lastSyncAt && ` · ${new Date(connector.lastSyncAt).toLocaleTimeString()}`}
         </span>
       </div>
-      <div className="flex flex-1 overflow-hidden">
+
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Entity list */}
-        <div className="w-72 border-r border-[#30363d] overflow-y-auto shrink-0">
+        <div style={{
+          width: 260, flexShrink: 0,
+          borderRight: '1px solid var(--border)',
+          overflowY: 'auto',
+        }} className="canvas-scroll">
           {entities.map(e => (
             <button
               key={e.address}
               onClick={() => setSelected(e)}
-              className={[
-                'w-full text-left px-3 py-2 border-b border-[#21262d] hover:bg-[#161b22] transition-colors',
-                selected?.address === e.address ? 'bg-[#21262d]' : '',
-              ].join(' ')}
+              style={{
+                width: '100%', textAlign: 'left',
+                padding: '6px 12px 6px 14px',
+                background: selected?.address === e.address ? 'var(--bg-sidebar-active)' : 'transparent',
+                borderLeft: selected?.address === e.address ? '2px solid var(--amber)' : '2px solid transparent',
+                borderBottom: '1px solid var(--border)',
+                cursor: 'pointer',
+                transition: 'background 0.12s ease',
+              }}
+              onMouseEnter={e => {
+                if (selected?.address !== (e.currentTarget as HTMLElement).dataset.addr)
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.03)'
+              }}
+              onMouseLeave={ev => {
+                if (selected?.address !== e.address)
+                  (ev.currentTarget as HTMLElement).style.background = 'transparent'
+              }}
             >
-              <div className="text-xs text-[#e6edf3] truncate">{e.address}</div>
-              <div className="text-[10px] text-[#8b949e]">{e.type}</div>
+              <div style={{
+                fontSize: 11.5, color: 'var(--text-primary)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{e.address}</div>
+              <div style={{ fontSize: 10, color: 'var(--text-very-muted)', marginTop: 2 }}>{e.type}</div>
             </button>
           ))}
           {entities.length === 0 && (
-            <div className="px-3 py-4 text-xs text-[#8b949e]">No entities</div>
+            <div style={{ padding: '16px 14px', fontSize: 11, color: 'var(--text-very-muted)' }}>No entities</div>
           )}
         </div>
-        {/* Entity detail */}
-        <div className="flex-1 overflow-auto p-4">
+
+        {/* JSON detail */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }} className="canvas-scroll">
           {selected ? (
-            <pre className="text-xs text-[#e6edf3] whitespace-pre-wrap font-mono">
-              {renderData(selected.data)}
-            </pre>
+            <pre style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11.5,
+              color: 'var(--text-primary)',
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.6,
+              margin: 0,
+            }}>{renderData(selected.data)}</pre>
           ) : (
-            <span className="text-[#8b949e] text-sm">Select an entity</span>
+            <span style={{ fontSize: 12, color: 'var(--text-very-muted)' }}>Select an entity</span>
           )}
         </div>
       </div>

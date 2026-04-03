@@ -23,7 +23,7 @@ export default function JobsView() {
   const handleNew = () => setSelectedId(null)
 
   return (
-    <div className="flex h-full">
+    <div style={{ display: 'flex', height: '100%', background: 'var(--bg-page)' }}>
       <JobList
         jobs={jobs}
         selectedId={selectedId}

@@ -1,10 +1,7 @@
 import { useState } from 'react'
 import { submitFeedback } from '../api/feedback'
 
-interface Props {
-  onClose: () => void
-}
-
+interface Props { onClose: () => void }
 type State = 'idle' | 'submitting' | 'done' | 'error'
 
 export default function FeedbackModal({ onClose }: Props) {
@@ -29,50 +26,97 @@ export default function FeedbackModal({ onClose }: Props) {
     }
   }
 
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '7px 10px',
+    fontSize: 13,
+    background: 'var(--bg-input)',
+    border: '1px solid var(--border)',
+    borderRadius: 3,
+    color: 'var(--text-primary)',
+    outline: 'none',
+    fontFamily: 'var(--font-ui)',
+    opacity: state === 'submitting' ? 0.5 : 1,
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: 'var(--text-very-muted)',
+    marginBottom: 6,
+  }
+
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(20,16,10,0.18)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 50,
+      }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-5 w-96 shadow-xl">
+      <div style={{
+        background: 'var(--bg-modal)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: 24,
+        width: 400,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+      }}>
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-[#e6edf3]">Send Feedback</h3>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: 16,
+        }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+            Send Feedback
+          </h3>
           <button
             onClick={onClose}
-            className="text-[#484f58] hover:text-[#8b949e] text-lg leading-none"
+            style={{
+              fontSize: 18, color: 'var(--text-very-muted)',
+              background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1,
+            }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
             aria-label="Close"
           >×</button>
         </div>
 
+        <div style={{ borderTop: '1px solid var(--border)', marginBottom: 20 }} />
+
         {state === 'done' ? (
-          /* Success state */
-          <div className="text-center py-4">
-            <div className="text-2xl mb-2">✓</div>
-            <p className="text-sm text-[#e6edf3] mb-1">Issue filed!</p>
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <div style={{ fontSize: 28, color: 'var(--green)', marginBottom: 10 }}>✓</div>
+            <p style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 6 }}>Issue filed!</p>
             <a
               href={issueUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-[#58a6ff] hover:underline break-all"
-            >
-              {issueUrl}
-            </a>
-            <div className="mt-4">
+              style={{ fontSize: 11, color: 'var(--amber)', wordBreak: 'break-all' }}
+            >{issueUrl}</a>
+            <div style={{ marginTop: 20 }}>
               <button
                 onClick={onClose}
-                className="px-4 py-1.5 text-xs bg-[#21262d] border border-[#30363d] rounded text-[#e6edf3] hover:bg-[#30363d]"
-              >
-                Close
-              </button>
+                style={{
+                  padding: '7px 16px', fontSize: 13,
+                  background: 'var(--bg-pane-title)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 3, cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                }}
+              >Close</button>
             </div>
           </div>
         ) : (
-          /* Form state */
           <>
-            <div className="mb-3">
-              <label className="block text-[11px] text-[#8b949e] mb-1">
-                Title <span className="text-[#f85149]">*</span>
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>
+                Title <span style={{ color: 'var(--red)' }}>*</span>
               </label>
               <input
                 autoFocus
@@ -81,41 +125,58 @@ export default function FeedbackModal({ onClose }: Props) {
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 disabled={state === 'submitting'}
                 placeholder="Short description of the issue or idea"
-                className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#484f58] focus:outline-none focus:border-[#58a6ff] disabled:opacity-50"
+                style={inputStyle}
+                onFocus={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--amber)'}
+                onBlur={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'}
               />
             </div>
 
-            <div className="mb-4">
-              <label className="block text-[11px] text-[#8b949e] mb-1">Details</label>
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Details</label>
               <textarea
                 value={body}
                 onChange={e => setBody(e.target.value)}
                 disabled={state === 'submitting'}
                 rows={5}
                 placeholder="Steps to reproduce, expected vs actual behavior, etc."
-                className="w-full px-3 py-1.5 text-xs bg-[#0d1117] border border-[#30363d] rounded text-[#e6edf3] placeholder:text-[#484f58] focus:outline-none focus:border-[#58a6ff] resize-none disabled:opacity-50"
+                style={{ ...inputStyle, resize: 'none' }}
+                onFocus={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--amber)'}
+                onBlur={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'}
               />
             </div>
 
             {state === 'error' && (
-              <p className="text-[11px] text-[#f85149] mb-3 font-mono">{errorMsg}</p>
+              <div style={{
+                fontSize: 11, color: 'var(--red)',
+                fontFamily: 'var(--font-mono)',
+                marginBottom: 14,
+              }}>{errorMsg}</div>
             )}
 
-            <div className="flex gap-2 justify-end">
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
                 onClick={onClose}
                 disabled={state === 'submitting'}
-                className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] disabled:opacity-40"
-              >
-                Cancel
-              </button>
+                style={{
+                  padding: '7px 14px', fontSize: 13,
+                  color: 'var(--text-muted)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  opacity: state === 'submitting' ? 0.4 : 1,
+                }}
+              >Cancel</button>
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className="px-3 py-1.5 text-xs bg-[#238636] hover:bg-[#2ea043] text-white rounded disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {state === 'submitting' ? 'Filing…' : 'Submit Issue'}
-              </button>
+                style={{
+                  padding: '7px 16px', fontSize: 13,
+                  background: 'var(--bg-modal)',
+                  border: '1px solid var(--border-dark)',
+                  borderRadius: 4,
+                  color: 'var(--text-primary)',
+                  cursor: canSubmit ? 'pointer' : 'default',
+                  opacity: canSubmit ? 1 : 0.4,
+                }}
+              >{state === 'submitting' ? 'Filing…' : 'Submit Issue'}</button>
             </div>
           </>
         )}

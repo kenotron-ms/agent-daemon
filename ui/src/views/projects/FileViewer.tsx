@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import hljs from 'highlight.js'
-import 'highlight.js/styles/github-dark.css'
+import 'highlight.js/styles/github.css'
 import { marked } from 'marked'
 import { Folder, File, FileText, FileCode, ChevronUp } from 'lucide-react'
 import { FileEntry, listFiles, readFileContent } from '../../api/projects'
@@ -51,32 +51,6 @@ function highlight(code: string, lang: string): string {
   return hljs.highlightAuto(code).value
 }
 
-// ── Markdown prose styles (injected once) ────────────────────────────────────
-
-const MD_STYLES = `
-.md-prose { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a1a; line-height: 1.7; }
-.md-prose h1 { font-size: 1.75rem; font-weight: 700; margin: 0 0 0.75rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
-.md-prose h2 { font-size: 1.375rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }
-.md-prose h3 { font-size: 1.125rem; font-weight: 600; margin: 1.25rem 0 0.25rem; }
-.md-prose h4, .md-prose h5, .md-prose h6 { font-weight: 600; margin: 1rem 0 0.25rem; }
-.md-prose p { margin: 0 0 0.75rem; }
-.md-prose ul, .md-prose ol { margin: 0 0 0.75rem; padding-left: 1.75rem; }
-.md-prose li { margin-bottom: 0.25rem; }
-.md-prose code { background: #f3f4f6; padding: 0.125rem 0.375rem; border-radius: 4px; font-family: 'Menlo','Monaco','Courier New',monospace; font-size: 0.85em; color: #c0392b; }
-.md-prose pre { background: #1e1e2e; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0 0 1rem; }
-.md-prose pre code { background: none; padding: 0; color: #cdd6f4; font-size: 0.875rem; border-radius: 0; }
-.md-prose blockquote { border-left: 4px solid #d1d5db; padding: 0.25rem 0 0.25rem 1rem; color: #6b7280; margin: 0 0 0.75rem; }
-.md-prose a { color: #2563eb; text-decoration: underline; }
-.md-prose a:hover { color: #1d4ed8; }
-.md-prose hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5rem 0; }
-.md-prose table { width: 100%; border-collapse: collapse; margin: 0 0 1rem; font-size: 0.875rem; }
-.md-prose th { background: #f9fafb; border: 1px solid #e5e7eb; padding: 0.5rem 0.75rem; text-align: left; font-weight: 600; }
-.md-prose td { border: 1px solid #e5e7eb; padding: 0.5rem 0.75rem; }
-.md-prose tr:nth-child(even) td { background: #f9fafb; }
-.md-prose img { max-width: 100%; border-radius: 4px; }
-.md-prose strong { font-weight: 600; }
-.md-prose em { font-style: italic; }
-`
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -148,21 +122,19 @@ export default function FileViewer({ projectId, sessionId }: Props) {
   }, [content, mdFile])
 
   return (
-    <div className="flex h-full bg-[#0d1117]">
+    <div className="flex h-full bg-[#F7F4EF]">
       {/* Inject markdown prose styles once */}
-      <style>{MD_STYLES}</style>
-
       {/* ── File tree ─────────────────────────────────────────────────────── */}
-      <div className="w-52 shrink-0 flex flex-col border-r border-[#30363d] overflow-hidden">
+      <div className="w-52 shrink-0 flex flex-col border-r border-[#DDD5C8] overflow-hidden">
         {/* Breadcrumb nav */}
-        <div className="px-2 py-1.5 border-b border-[#21262d] flex items-center gap-1 text-[10px] text-[#8b949e] overflow-x-auto whitespace-nowrap">
-          <button onClick={() => setPath('')} className="hover:text-[#e6edf3] shrink-0">/</button>
+        <div className="px-2 py-1.5 border-b border-[#DDD5C8] flex items-center gap-1 text-[10px] text-[#8A8278] overflow-x-auto whitespace-nowrap">
+          <button onClick={() => setPath('')} className="hover:text-[#1C1A16] shrink-0">/</button>
           {breadcrumbs.map((seg, i) => (
             <span key={i} className="flex items-center gap-1 shrink-0">
               <span>/</span>
               <button
                 onClick={() => setPath(breadcrumbs.slice(0, i + 1).join('/'))}
-                className="hover:text-[#e6edf3]"
+                className="hover:text-[#1C1A16]"
               >{seg}</button>
             </span>
           ))}
@@ -170,13 +142,13 @@ export default function FileViewer({ projectId, sessionId }: Props) {
 
         {/* Entries */}
         <div className="flex-1 overflow-y-auto">
-          {loading && <div className="px-3 py-2 text-[10px] text-[#484f58]">Loading…</div>}
+          {loading && <div className="px-3 py-2 text-[10px] text-[#A09888]">Loading…</div>}
 
           {/* Parent dir row */}
           {path && (
             <button
               onClick={() => setPath(breadcrumbs.slice(0, -1).join('/'))}
-              className="w-full text-left px-3 py-1 text-[11px] text-[#8b949e] hover:bg-[#161b22] border-b border-[#21262d] flex items-center gap-1.5"
+              className="w-full text-left px-3 py-1 text-[11px] text-[#8A8278] hover:bg-[#E8E2D8] border-b border-[#DDD5C8] flex items-center gap-1.5"
             >
               <ChevronUp className="w-3 h-3 shrink-0" />
               <span>..</span>
@@ -190,20 +162,20 @@ export default function FileViewer({ projectId, sessionId }: Props) {
                 key={e.name}
                 onClick={() => e.isDir ? setPath(entryPath) : openFile(e.name)}
                 className={[
-                  'w-full text-left px-3 py-1 text-[11px] border-b border-[#21262d] hover:bg-[#161b22] transition-colors flex items-center gap-1.5',
-                  selected === entryPath ? 'bg-[#21262d]' : '',
+                  'w-full text-left px-3 py-1 text-[11px] border-b border-[#DDD5C8] hover:bg-[#E8E2D8] transition-colors flex items-center gap-1.5',
+                  selected === entryPath ? 'bg-[#E8E0D4]' : '',
                 ].join(' ')}
               >
                 {e.isDir ? (
-                  <Folder className="w-3.5 h-3.5 shrink-0 text-[#58a6ff]" />
+                  <Folder className="w-3.5 h-3.5 shrink-0 text-[#F59E0B]" />
                 ) : (
-                  <FileIcon name={e.name} className="w-3.5 h-3.5 shrink-0 text-[#8b949e]" />
+                  <FileIcon name={e.name} className="w-3.5 h-3.5 shrink-0 text-[#8A8278]" />
                 )}
-                <span className={e.isDir ? 'text-[#58a6ff] truncate' : 'text-[#e6edf3] truncate'}>
+                <span className={e.isDir ? 'text-[#F59E0B] truncate' : 'text-[#1C1A16] truncate'}>
                   {e.name}
                 </span>
                 {!e.isDir && e.size > 0 && (
-                  <span className="ml-auto text-[#484f58] text-[9px] shrink-0">
+                  <span className="ml-auto text-[#A09888] text-[9px] shrink-0">
                     {e.size < 1024 ? `${e.size}b` : `${(e.size / 1024).toFixed(1)}k`}
                   </span>
                 )}
@@ -216,32 +188,32 @@ export default function FileViewer({ projectId, sessionId }: Props) {
       {/* ── Content pane ──────────────────────────────────────────────────── */}
       <div className={`flex-1 ${isPreviewing ? 'flex flex-col overflow-hidden' : 'overflow-auto'}`}>
         {!selected && (
-          <div className="flex items-center justify-center h-full text-[#484f58] text-sm">
+          <div className="flex items-center justify-center h-full text-[#A09888] text-sm">
             Select a file to view
           </div>
         )}
         {selected && contentLoading && (
-          <div className="flex items-center justify-center h-full text-[#484f58] text-sm">
+          <div className="flex items-center justify-center h-full text-[#A09888] text-sm">
             Loading…
           </div>
         )}
         {selected && error && (
-          <div className="p-4 text-[#f85149] text-xs font-mono">{error}</div>
+          <div className="p-4 text-[#E53935] text-xs font-mono">{error}</div>
         )}
         {selected && content === '__image__' && (
           <div className="p-4 flex items-start justify-center">
             <img
               src={`/api/projects/${projectId}/sessions/${sessionId}/files/${selected}`}
               alt={selected}
-              className="max-w-full rounded border border-[#30363d]"
+              className="max-w-full rounded border border-[#DDD5C8]"
             />
           </div>
         )}
         {selected && content !== null && content !== '__image__' && (
           <>
             {/* File header */}
-            <div className={`flex items-center gap-2 px-3 py-1.5 bg-[#161b22] border-b border-[#30363d] ${isPreviewing ? 'shrink-0' : 'sticky top-0'}`}>
-              <span className="text-[10px] text-[#8b949e] font-mono truncate">{selected}</span>
+            <div className={`flex items-center gap-2 px-3 py-1.5 bg-[#E8E2D8] border-b border-[#DDD5C8] ${isPreviewing ? 'shrink-0' : 'sticky top-0'}`}>
+              <span className="text-[10px] text-[#8A8278] font-mono truncate">{selected}</span>
 
               {hasPreview ? (
                 <div className="ml-auto flex gap-1">
@@ -252,20 +224,20 @@ export default function FileViewer({ projectId, sessionId }: Props) {
                       className={[
                         'text-[10px] px-2 py-0.5 rounded capitalize',
                         viewMode === mode
-                          ? 'bg-[#388bfd]/20 text-[#58a6ff]'
-                          : 'bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3]',
+                          ? 'bg-[#388bfd]/20 text-[#F59E0B]'
+                          : 'bg-[#E8E0D4] text-[#8A8278] hover:text-[#1C1A16]',
                       ].join(' ')}
                     >{mode}</button>
                   ))}
                 </div>
               ) : (
-                <span className="ml-auto text-[9px] text-[#484f58]">{langFor(fileName)}</span>
+                <span className="ml-auto text-[9px] text-[#A09888]">{langFor(fileName)}</span>
               )}
             </div>
 
             {/* Preview: markdown or HTML */}
             {isPreviewing && mdFile && (
-              <div className="flex-1 overflow-auto bg-white">
+              <div className="flex-1 overflow-auto bg-[#F7F4EF]">
                 <div
                   className="md-prose max-w-3xl mx-auto px-8 py-6 text-sm"
                   dangerouslySetInnerHTML={{ __html: markdownHtml }}
@@ -277,7 +249,7 @@ export default function FileViewer({ projectId, sessionId }: Props) {
             {isPreviewing && htmlFile && (
               <iframe
                 srcDoc={content}
-                className="flex-1 w-full border-0 bg-white"
+                className="flex-1 w-full border-0 bg-[#F7F4EF]"
                 sandbox="allow-scripts allow-same-origin"
                 title={selected}
               />

@@ -2,24 +2,106 @@
 @tailwind components;
 @tailwind utilities;
 
-/* xterm.js scrollbar — invisible track, thin ghost thumb like a real terminal */
-.xterm-viewport::-webkit-scrollbar        { width: 4px; }
-.xterm-viewport::-webkit-scrollbar-track  { background: transparent; }
-.xterm-viewport::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.08); border-radius: 2px; }
-.xterm-viewport::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+/* ── Canvas Design Tokens ──────────────────────────────────────────────── */
+:root {
+  /* Backgrounds — warm neutral palette */
+  --bg-page:           #F0EBE3;
+  --bg-header:         #E8E2D8;
+  --bg-sidebar:        #F0EBE3;
+  --bg-sidebar-active: #E8E0D4;
+  --bg-pane-title:     #DDD5C8;
+  --bg-terminal:       #0F0E0C;
+  --bg-right:          #F7F4EF;
+  --bg-modal:          #FAF8F4;
+  --bg-input:          #F5F2EC;
 
-/* react-resizable-panels drag handle */
-[data-panel-resize-handle-id] { outline: none; }
+  /* Borders */
+  --border:            #DDD5C8;
+  --border-dark:       #3A3530;
+
+  /* Text */
+  --text-primary:      #1C1A16;
+  --text-muted:        #8A8278;
+  --text-very-muted:   #A09888;
+  --text-terminal:     #C8C4BC;
+
+  /* Accent */
+  --amber:             #F59E0B;
+  --amber-subtle:      rgba(245, 158, 11, 0.08);
+  --amber-border:      rgba(245, 158, 11, 0.20);
+  --green:             #4CAF74;
+  --red:               #E53935;
+  --terracotta:        #C4784A;
+
+  /* Typography */
+  --font-ui:   -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+  --font-mono: 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+/* ── Global Reset ───────────────────────────────────────────────────────── */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
 
 * {
   box-sizing: border-box;
 }
 
-html, body, #root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  background: #0d1117;
-  color: #e6edf3;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+/* ── xterm.js scrollbar — slim warm thumb ──────────────────────────────── */
+.xterm-viewport::-webkit-scrollbar        { width: 4px; }
+.xterm-viewport::-webkit-scrollbar-track  { background: transparent; }
+.xterm-viewport::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.06); border-radius: 2px; }
+.xterm-viewport::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+
+/* ── react-resizable-panels drag handle ─────────────────────────────────── */
+[data-panel-resize-handle-id] { outline: none; }
+
+/* ── Canvas scrollbar — warm neutral ────────────────────────────────────── */
+.canvas-scroll::-webkit-scrollbar        { width: 4px; height: 4px; }
+.canvas-scroll::-webkit-scrollbar-track  { background: transparent; }
+.canvas-scroll::-webkit-scrollbar-thumb  { background: rgba(28,26,22,0.12); border-radius: 2px; }
+.canvas-scroll::-webkit-scrollbar-thumb:hover { background: rgba(28,26,22,0.20); }
+
+/* ── highlight.js override — use github light for warm feel ─────────────── */
+.hljs {
+  background: transparent !important;
+  padding: 0 !important;
 }
+
+/* ── Markdown prose styles (right panel documents) ──────────────────────── */
+.md-prose {
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+.md-prose h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+.md-prose h2 { font-size: 15px; font-weight: 600; margin: 1.25rem 0 0.4rem; color: var(--text-primary); }
+.md-prose h3 { font-size: 13px; font-weight: 600; margin: 1rem 0 0.25rem; color: var(--text-primary); }
+.md-prose p  { font-size: 13px; margin: 0 0 0.75rem; color: var(--text-primary); line-height: 1.6; }
+.md-prose ul, .md-prose ol { font-size: 13px; padding-left: 16px; margin: 0 0 0.75rem; color: var(--text-primary); line-height: 1.75; }
+.md-prose li { margin-bottom: 0.25rem; }
+.md-prose code { font-family: var(--font-mono); font-size: 11.5px; background: var(--bg-pane-title); padding: 1px 4px; border-radius: 3px; }
+.md-prose pre  { background: var(--bg-pane-title); border-radius: 4px; padding: 12px; overflow-x: auto; margin: 0.75rem 0; }
+.md-prose pre code { background: transparent; padding: 0; }
+.md-prose a  { color: var(--amber); text-decoration: none; }
+.md-prose a:hover { text-decoration: underline; }
+.md-prose blockquote { border-left: 3px solid var(--border-dark); margin: 0.75rem 0; padding-left: 12px; color: var(--text-muted); }
+.md-prose table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 0.75rem; }
+.md-prose th { background: var(--bg-pane-title); font-weight: 600; padding: 6px 10px; text-align: left; border: 1px solid var(--border); }
+.md-prose td { padding: 5px 10px; border: 1px solid var(--border); }
+
+/* ── Highlight.js code theme — light warm ───────────────────────────────── */
+.hljs-comment, .hljs-quote { color: var(--text-very-muted); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #7C3F2A; font-weight: 600; }
+.hljs-string, .hljs-attr { color: #3A6832; }
+.hljs-number, .hljs-literal { color: #2A5F8F; }
+.hljs-title, .hljs-section, .hljs-name { color: #4A3580; font-weight: 600; }
+.hljs-type { color: #7C3F2A; }
+.hljs-meta { color: var(--text-muted); }

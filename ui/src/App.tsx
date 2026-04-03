@@ -14,15 +14,61 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'bundles',  label: 'Bundles' },
 ]
 
+// Canvas two-square logo mark
+function CanvasLogo() {
+  return (
+    <svg width="22" height="22" viewBox="107 107 298 298" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', flexShrink: 0 }}>
+      <rect x="116" y="116" width="240" height="240" rx="28" stroke="#1C1A16" strokeWidth="18" fill="none"/>
+      <rect x="156" y="156" width="240" height="240" rx="28" stroke="#C4784A" strokeWidth="18" fill="none"/>
+    </svg>
+  )
+}
+
+// Header icon buttons (SVG inline — feather-style)
+
+function BellIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+  )
+}
+
+function SettingsIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  )
+}
+
 export default function App() {
-  const [active, setActive]           = useState<Tab>('projects')
+  const [active, setActive]             = useState<Tab>('projects')
   const [showFeedback, setShowFeedback] = useState(false)
 
   return (
-    <div className="flex flex-col h-full bg-[#0d1117]">
-      {/* Top nav */}
-      <nav className="flex items-center bg-[#161b22] border-b border-[#30363d] px-3 h-9 shrink-0">
-        <span className="text-[#8b949e] text-xs font-semibold mr-4">loom</span>
+    <div className="flex flex-col h-full" style={{ background: 'var(--bg-page)' }}>
+
+      {/* ── App Header ──────────────────────────────────────────────── */}
+      <header
+        className="flex items-center shrink-0 px-3 gap-0"
+        style={{
+          height: 38,
+          background: 'var(--bg-header)',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        {/* Logo + brand */}
+        <div className="flex items-center gap-1.5 mr-4">
+          <CanvasLogo />
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+            Canvas
+          </span>
+        </div>
+
+        {/* Section tabs */}
         <div className="flex h-full" role="tablist">
           {TABS.map(tab => (
             <button
@@ -30,29 +76,65 @@ export default function App() {
               role="tab"
               aria-selected={active === tab.id}
               onClick={() => setActive(tab.id)}
-              className={[
-                'px-3 h-full text-xs border-b-2 transition-colors',
-                active === tab.id
-                  ? 'border-[#58a6ff] text-[#e6edf3]'
-                  : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]',
-              ].join(' ')}
+              style={{
+                height: '100%',
+                padding: '0 12px',
+                fontSize: 12,
+                fontWeight: 500,
+                color: active === tab.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                background: 'transparent',
+                borderBottom: active === tab.id ? '2px solid var(--amber)' : '2px solid transparent',
+                borderTop: 'none', borderLeft: 'none', borderRight: 'none',
+                cursor: 'pointer',
+                transition: 'color 0.12s ease',
+              }}
+              onMouseEnter={e => {
+                if (active !== tab.id) (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'
+              }}
+              onMouseLeave={e => {
+                if (active !== tab.id) (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'
+              }}
             >
               {tab.label}
             </button>
           ))}
         </div>
 
-        {/* Feedback button — right-aligned */}
-        <button
-          onClick={() => setShowFeedback(true)}
-          className="ml-auto text-[10px] px-2 py-0.5 rounded bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#30363d] transition-colors"
-          title="Send feedback or report a bug"
-        >
-          Feedback
-        </button>
-      </nav>
+        {/* Right-side icon buttons */}
+        <div className="flex items-center gap-0.5 ml-auto">
+          <button
+            onClick={() => setShowFeedback(true)}
+            style={{
+              width: 26, height: 26,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--text-very-muted)',
+              background: 'transparent', border: 'none', borderRadius: 3,
+              cursor: 'pointer', transition: 'color 0.12s ease',
+            }}
+            title="Send feedback"
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
+          >
+            <BellIcon />
+          </button>
+          <button
+            style={{
+              width: 26, height: 26,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--text-very-muted)',
+              background: 'transparent', border: 'none', borderRadius: 3,
+              cursor: 'pointer', transition: 'color 0.12s ease',
+            }}
+            title="Settings"
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
+          >
+            <SettingsIcon />
+          </button>
+        </div>
+      </header>
 
-      {/* Mode content */}
+      {/* ── Section content ─────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden">
         {active === 'projects' && <ProjectsView />}
         {active === 'jobs'     && <JobsView />}
