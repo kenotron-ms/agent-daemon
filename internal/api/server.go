@@ -104,6 +104,11 @@ func (s *Server) Stop() {
 	}
 }
 
+// WorkspaceStore exposes the workspace service for testing.
+func (s *Server) WorkspaceStore() *workspaces.Service {
+	return s.workspaceStore
+}
+
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Static web UI
 	mux.Handle("/", staticHandler())
@@ -163,6 +168,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{id}", s.getProject)
 	mux.HandleFunc("PATCH /api/projects/{id}", s.updateProject)
 	mux.HandleFunc("DELETE /api/projects/{id}", s.deleteProject)
+	mux.HandleFunc("GET /api/projects/{id}/settings", s.getProjectSettings)
+	mux.HandleFunc("PUT /api/projects/{id}/settings", s.updateProjectSettings)
 
 	// Sessions
 	mux.HandleFunc("GET /api/projects/{id}/sessions", s.listSessions)
