@@ -70,3 +70,37 @@ func TestPutProjectSettings_writesYAML(t *testing.T) {
 		t.Errorf("expected 'foundation' in settings.yaml, got: %s", data)
 	}
 }
+
+func TestGetProjectSettings_afterPut(t *testing.T) {
+	srv := newTestServer(t)
+	tmp := t.TempDir()
+	p, err := srv.WorkspaceStore().CreateProject(t.Context(), "round-trip", tmp)
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	// PUT settings
+	body := amplifier.ProjectSettings{
+		Bundle: &amplifier.BundleSettings{Active: "foundation"},
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest("PUT", "/api/projects/"+p.ID+"/settings", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+
+	// GET and verify round-trip
+	req = httptest.NewRequest("GET", "/api/projects/"+p.ID+"/settings", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var got amplifier.ProjectSettings
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Bundle == nil || got.Bundle.Active != "foundation" {
+		t.Errorf("expected bundle.active=foundation, got %+v", got.Bundle)
+	}
+}
