@@ -9,7 +9,7 @@ import (
 )
 
 func TestReadProjectSettings_missing(t *testing.T) {
-	s, err := amplifier.ReadProjectSettings("/nonexistent/path")
+	s, err := amplifier.ReadProjectSettings(filepath.Join(t.TempDir(), "does-not-exist"))
 	if err != nil {
 		t.Fatalf("expected nil error for missing file, got %v", err)
 	}
@@ -20,10 +20,6 @@ func TestReadProjectSettings_missing(t *testing.T) {
 
 func TestReadWriteProjectSettings_roundtrip(t *testing.T) {
 	dir := t.TempDir()
-	amplifierDir := filepath.Join(dir, ".amplifier")
-	if err := os.MkdirAll(amplifierDir, 0755); err != nil {
-		t.Fatal(err)
-	}
 
 	in := amplifier.ProjectSettings{
 		Bundle: &amplifier.BundleSettings{
@@ -46,5 +42,19 @@ func TestReadWriteProjectSettings_roundtrip(t *testing.T) {
 	}
 	if out.Routing == nil || out.Routing.Matrix != "balanced" {
 		t.Errorf("Routing.Matrix: got %v", out.Routing)
+	}
+}
+
+func TestWriteProjectSettings_createsDir(t *testing.T) {
+	dir := t.TempDir()
+	// Do NOT pre-create .amplifier/
+	in := amplifier.ProjectSettings{
+		Routing: &amplifier.RoutingSettings{Matrix: "balanced"},
+	}
+	if err := amplifier.WriteProjectSettings(dir, in); err != nil {
+		t.Fatalf("expected dir auto-creation, got: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".amplifier", "settings.yaml")); err != nil {
+		t.Fatalf("settings.yaml not created: %v", err)
 	}
 }
