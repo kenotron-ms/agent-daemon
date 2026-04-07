@@ -148,3 +148,107 @@ export async function listFiles(
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
+
+// ── Project settings (.amplifier/settings.yaml) ──────────────────────────────
+
+export interface BundleSettings {
+  active?: string
+  app?: string[]
+  added?: Record<string, string>
+}
+
+export interface ProviderEntry {
+  module: string
+  source?: string
+  config?: Record<string, unknown>
+}
+
+export interface DesktopNotifConfig {
+  enabled?: boolean
+  show_device?: boolean
+  show_project?: boolean
+  show_preview?: boolean
+  preview_length?: number
+  subtitle?: string
+  suppress_if_focused?: boolean
+  min_iterations?: number
+  show_iteration_count?: boolean
+  sound?: string
+  debug?: boolean
+}
+
+export interface PushNotifConfig {
+  enabled?: boolean
+  server?: string
+  priority?: string
+  tags?: string[]
+  debug?: boolean
+}
+
+export interface NotificationsConfig {
+  desktop?: DesktopNotifConfig
+  push?: PushNotifConfig
+}
+
+export interface ProjectConfigSettings {
+  providers?: ProviderEntry[]
+  notifications?: NotificationsConfig
+}
+
+export interface ToolConfig {
+  allowed_write_paths?: string[]
+  allowed_read_paths?: string[]
+  denied_write_paths?: string[]
+}
+
+export interface ToolModuleEntry {
+  module: string
+  config?: ToolConfig
+}
+
+export interface ModulesSettings {
+  tools?: ToolModuleEntry[]
+}
+
+export interface OverrideEntry {
+  source?: string
+  config?: Record<string, unknown>
+}
+
+export interface SourcesSettings {
+  modules?: Record<string, string>
+  bundles?: Record<string, string>
+}
+
+export interface RoutingSettings {
+  matrix?: string
+  overrides?: Record<string, string>
+}
+
+export interface ProjectSettings {
+  bundle?: BundleSettings
+  config?: ProjectConfigSettings
+  modules?: ModulesSettings
+  overrides?: Record<string, OverrideEntry>
+  sources?: SourcesSettings
+  routing?: RoutingSettings
+}
+
+export async function getProjectSettings(projectId: string): Promise<ProjectSettings> {
+  const res = await fetch(`/api/projects/${projectId}/settings`)
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function updateProjectSettings(
+  projectId: string,
+  settings: ProjectSettings,
+): Promise<ProjectSettings> {
+  const res = await fetch(`/api/projects/${projectId}/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
