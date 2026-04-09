@@ -67,18 +67,21 @@ export function XTermTerminal({ processId, onData }: Props) {
         fontSize: 13,
         fontFamily: 'Menlo, Monaco, "Courier New", monospace',
         theme: {
-          background: '#0d1117',
-          foreground: '#e6edf3',
-          cursor:     '#58a6ff',
-          selectionBackground: '#264f78',
-          black: '#0d1117', brightBlack: '#484f58',
+          // Canvas warm-terminal palette — matches --bg-terminal container exactly
+          // so there's no flickering between container and xterm background.
+          // Amber cursor is highly visible against the near-black background.
+          background: '#0F0E0C',
+          foreground: '#C8C4BC',
+          cursor:     '#F59E0B',
+          selectionBackground: '#3A3530',
+          black: '#0F0E0C', brightBlack: '#4A4540',
           red:   '#f85149', brightRed:   '#ff7b72',
           green: '#3fb950', brightGreen: '#56d364',
           yellow:'#d29922', brightYellow:'#e3b341',
           blue:  '#388bfd', brightBlue:  '#79c0ff',
           magenta:'#bc8cff',brightMagenta:'#d2a8ff',
           cyan:  '#39c5cf', brightCyan:  '#56d4dd',
-          white: '#b1bac4', brightWhite: '#f0f6fc',
+          white: '#C8C4BC', brightWhite: '#F0EBE3',
         },
         scrollback: SCROLLBACK_LINES,
       })
