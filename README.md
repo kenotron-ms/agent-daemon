@@ -9,6 +9,7 @@ A cross-platform scheduled job runner with a web UI and AI assistant. Run shell 
   - `loop` — repeating interval (e.g. `30s`, `5m`, `1h`)
   - `once` — run once then auto-disable, with optional delay (`10m`, `2h`)
   - `watch` — fire when a file or directory changes (OS-level notify or polling)
+  - `connector` — fire when a mirror connector detects a change in an external service
 - **Multiple executor types**
   - `shell` — run any shell command
   - `claude-code` — run `claude -p` with multi-step/resume support
@@ -16,7 +17,7 @@ A cross-platform scheduled job runner with a web UI and AI assistant. Run shell 
 - **Web UI** at `http://localhost:7700` — add, edit, enable/disable, and run jobs
 - **AI assistant** — describe jobs in plain English ("every 5 minutes, ask claude code to check for lint errors")
 - **System tray app** (macOS/Windows/Linux with CGO) — start/stop/pause/open UI from the menu bar
-- **Job queue** — bounded concurrency (4 parallel), deduplication, configurable retries and timeouts
+- **Job queue** — bounded concurrency (configurable, default: 4 parallel), deduplication, configurable retries and timeouts
 - **System service** — install as a LaunchAgent (macOS), systemd unit (Linux), or Windows Service
 - **Persistent storage** — embedded bbolt database, no external dependencies
 
@@ -25,7 +26,7 @@ A cross-platform scheduled job runner with a web UI and AI assistant. Run shell 
 ### macOS / Linux — one-liner
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kenotron-ms/loom/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/kenotron-ms/amplifier-app-loom/main/install.sh | sh
 ```
 
 This detects your OS and architecture, downloads the latest binary from GitHub Releases, installs it to `/usr/local/bin`, and tells you if you need to update your `PATH`.
@@ -33,7 +34,7 @@ This detects your OS and architecture, downloads the latest binary from GitHub R
 ### Windows — PowerShell
 
 ```powershell
-irm https://raw.githubusercontent.com/kenotron-ms/loom/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/kenotron-ms/amplifier-app-loom/main/install.ps1 | iex
 ```
 
 Installs to `%LOCALAPPDATA%\Programs\loom` and adds it to your user `PATH` automatically. To use a different directory:
@@ -44,7 +45,7 @@ $env:INSTALL_DIR="C:\tools"; irm .../install.ps1 | iex
 
 ### Manual download
 
-Pre-built binaries are on the [GitHub Releases](https://github.com/kenotron-ms/loom/releases) page:
+Pre-built binaries are on the [GitHub Releases](https://github.com/kenotron-ms/amplifier-app-loom/releases) page:
 
 | Platform | Binary |
 |---|---|
@@ -59,8 +60,8 @@ Download, `chmod +x` (Unix), and place in any directory on your `PATH`.
 ### Build from source
 
 ```sh
-git clone https://github.com/kenotron-ms/loom.git
-cd loom
+git clone https://github.com/kenotron-ms/amplifier-app-loom.git
+cd amplifier-app-loom
 make build          # native binary (with tray support if CGO available)
 make cross          # all platforms → dist/
 ```
@@ -105,6 +106,7 @@ Service management:
   start      Start the daemon
   stop       Stop the daemon
   status     Show daemon status
+  update     Update loom to the latest release (stops service, swaps binary, restarts)
 
 Scheduler control:
   pause      Pause job dispatching (running jobs continue)
@@ -114,22 +116,34 @@ Scheduler control:
 Job management:
   list       List all jobs
   add        Add a job (--name, --trigger, --schedule, --command, ...)
-  remove     Remove a job by ID or name
+  remove     Remove a job by ID or ID prefix
   prune      Delete all disabled jobs (--dry-run, -y)
+
+Configuration:
+  config absorb-env  Auto-detect AI API keys from environment and save them to the daemon config
 
 Other:
   tray       Launch the system tray app
-  serve      Internal: run the HTTP server (called by the service manager)
 ```
 
 ## Configuration
 
-The daemon reads `ANTHROPIC_API_KEY` from the environment for the AI assistant feature. Set it before installing:
+The daemon supports both Anthropic and OpenAI for the AI assistant feature. Set one before installing — or use `loom config absorb-env` afterwards to auto-detect keys from your environment:
 
 ```sh
+# Anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 loom install
+
+# — or — OpenAI
+export OPENAI_API_KEY=sk-...
+loom install
+
+# — or — detect and persist whatever keys are already in the environment
+loom config absorb-env
 ```
+
+`loom config absorb-env` searches `$ANTHROPIC_API_KEY`, `$OPENAI_API_KEY`, `~/.amplifier/keys.env`, `~/.anthropic/api_key`, `~/.env`, and common shell dotfiles, then saves any found keys into the daemon's config database. Useful after a system-level install where the service doesn't inherit your shell environment.
 
 Default port is `7700`. The database is stored at:
 - macOS: `~/Library/Application Support/loom/loom.db`
