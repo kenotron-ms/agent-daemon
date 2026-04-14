@@ -11,7 +11,6 @@ import (
 	"github.com/ms/amplifier-app-loom/internal/config"
 	"github.com/ms/amplifier-app-loom/internal/mirror"
 	"github.com/ms/amplifier-app-loom/internal/nl"
-	loompty "github.com/ms/amplifier-app-loom/internal/pty"
 	"github.com/ms/amplifier-app-loom/internal/queue"
 	"github.com/ms/amplifier-app-loom/internal/scheduler"
 	"github.com/ms/amplifier-app-loom/internal/store"
@@ -33,8 +32,6 @@ type Server struct {
 	mirrorStore    *mirror.MirrorStore
 	syncEngine     *mirror.SyncEngine
 	workspaceStore  *workspaces.Service
-	ptyMgr          *loompty.Manager
-	watchedSessions sync.Map // sessionID → struct{}: tracks in-flight name watchers
 	muxOnce        sync.Once
 	mux            *http.ServeMux
 }
@@ -60,10 +57,9 @@ func (s *Server) SetMirror(ms *mirror.MirrorStore, se *mirror.SyncEngine) {
 	s.syncEngine = se
 }
 
-// SetWorkspaces wires the workspace subsystem (projects, PTY) into the server.
-func (s *Server) SetWorkspaces(ws *workspaces.Service, mgr *loompty.Manager) {
+// SetWorkspaces wires the workspace subsystem (projects) into the server.
+func (s *Server) SetWorkspaces(ws *workspaces.Service) {
 	s.workspaceStore = ws
-	s.ptyMgr = mgr
 }
 
 // ServeHTTP implements http.Handler for use in tests.
@@ -174,20 +170,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{id}/settings", s.getProjectSettings)
 	mux.HandleFunc("PUT /api/projects/{id}/settings", s.updateProjectSettings)
 
-	// Sessions
-	mux.HandleFunc("GET /api/projects/{id}/sessions", s.listSessions)
-	mux.HandleFunc("POST /api/projects/{id}/sessions", s.createSession)
-	mux.HandleFunc("DELETE /api/projects/{id}/sessions/{sid}", s.deleteSession)
-
-	// Terminal
-	mux.HandleFunc("POST /api/projects/{id}/sessions/{sid}/terminal", s.spawnTerminal)
-	mux.HandleFunc("/api/terminal/{processId}", s.handleTerminalWS)
-	mux.HandleFunc("POST /api/terminal/{processId}/resize", s.resizeTerminal)
-
-	// Files + Stats
-	mux.HandleFunc("GET /api/projects/{id}/sessions/{sid}/files", s.listFiles)
-	mux.HandleFunc("GET /api/projects/{id}/sessions/{sid}/files/{path...}", s.readFile)
-	mux.HandleFunc("GET /api/projects/{id}/sessions/{sid}/stats", s.getSessionStats)
+	// Files (project-scoped, no longer session-scoped)
+	mux.HandleFunc("GET /api/projects/{id}/files", s.listFiles)
+	mux.HandleFunc("GET /api/projects/{id}/files/{path...}", s.readFile)
 
 	// Server-side directory browser (works for remote servers too)
 	mux.HandleFunc("GET /api/filesystem/browse", s.browseDirs)
@@ -208,7 +193,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/ui/focus", s.focusTrigger)
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")

@@ -13,7 +13,6 @@ import (
 
 	"github.com/ms/amplifier-app-loom/internal/api"
 	"github.com/ms/amplifier-app-loom/internal/config"
-	loompty "github.com/ms/amplifier-app-loom/internal/pty"
 	"github.com/ms/amplifier-app-loom/internal/store"
 	"github.com/ms/amplifier-app-loom/internal/workspaces"
 )
@@ -43,7 +42,7 @@ func newTestServer(t *testing.T) *api.Server {
 
 	cfg := &config.Config{}
 	srv := api.NewServer(cfg, boltStore, nil, nil, time.Now(), nil)
-	srv.SetWorkspaces(ws, loompty.NewManager())
+	srv.SetWorkspaces(ws)
 	return srv
 }
 

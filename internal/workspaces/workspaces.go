@@ -111,7 +111,7 @@ func (s *Service) ListProjects(_ context.Context) ([]*Project, error) {
 	return projects, err
 }
 
-func (s *Service) UpdateProject(_ context.Context, id, name string) (*Project, error) {
+func (s *Service) UpdateProject(_ context.Context, id, name, workspace string) (*Project, error) {
 	var p Project
 	return &p, s.db.Update(func(tx *bolt.Tx) error {
 		data := tx.Bucket(bucketProjects).Get([]byte(id))

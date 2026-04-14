@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -238,4 +239,23 @@ func runAmpCmd(args ...string) error {
 		return fmt.Errorf("%s", msg)
 	}
 	return nil
+}
+
+// resolveAmplifier finds the amplifier binary across common install locations.
+func resolveAmplifier() string {
+	if p, err := exec.LookPath("amplifier"); err == nil {
+		return p
+	}
+	home, _ := os.UserHomeDir()
+	for _, p := range []string{
+		filepath.Join(home, ".local", "bin", "amplifier"),
+		"/usr/local/bin/amplifier",
+		"/opt/homebrew/bin/amplifier",
+		filepath.Join(home, "go", "bin", "amplifier"),
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return "amplifier"
 }

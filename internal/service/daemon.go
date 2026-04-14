@@ -11,7 +11,6 @@ import (
 	"github.com/ms/amplifier-app-loom/internal/config"
 	"github.com/ms/amplifier-app-loom/internal/mirror"
 	"github.com/ms/amplifier-app-loom/internal/platform"
-	loompty "github.com/ms/amplifier-app-loom/internal/pty"
 	"github.com/ms/amplifier-app-loom/internal/queue"
 	"github.com/ms/amplifier-app-loom/internal/scheduler"
 	"github.com/ms/amplifier-app-loom/internal/store"
@@ -121,12 +120,12 @@ func (d *Daemon) Run() error {
 			srv.SetMirror(ms, se)
 		}
 
-		// Wire up the workspace subsystem (projects, sessions, PTY).
+		// Wire up the workspace subsystem (projects).
 		ws, wsErr := workspaces.New(boltStore.DB())
 		if wsErr != nil {
 			slog.Error("failed to init workspace store", "err", wsErr)
 		} else {
-			srv.SetWorkspaces(ws, loompty.NewManager())
+			srv.SetWorkspaces(ws)
 		}
 	}
 
