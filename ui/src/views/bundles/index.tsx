@@ -77,7 +77,7 @@ function BundleCard({
       <div className="flex items-center justify-between gap-2 mb-2">
         <Stars rating={entry.rating} />
         <div className="flex gap-1 flex-wrap justify-end">
-          {entry.tags.slice(0, 3).map(t => (
+          {(entry.tags ?? []).slice(0, 3).map(t => (
             <span key={t} className="text-[8px] px-1 py-0.5 rounded bg-[var(--bg-sidebar-active)] text-[var(--text-very-muted)]">
               {t}
             </span>
@@ -88,13 +88,13 @@ function BundleCard({
       {/* Action */}
       <div className="flex items-center justify-between gap-2">
         <a
-          href={entry.repo}
+          href={entry.repo ?? '#'}
           target="_blank"
           rel="noopener noreferrer"
           className="text-[10px] text-[var(--amber)] hover:underline truncate font-mono"
-          title={entry.repo}
+          title={entry.repo ?? ''}
         >
-          {entry.repo.replace('https://github.com/', '')}
+          {(entry.repo ?? '').replace('https://github.com/', '')}
         </a>
         {installed ? (
           <button
@@ -129,11 +129,15 @@ export default function BundlesView() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [busy, setBusy]           = useState<Record<string, boolean>>({})
   const [toast, setToast]         = useState('')
+  const [error, setError]         = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([fetchRegistry(), listBundles()])
       .then(([reg, inst]) => { setRegistry(reg); setInstalled(inst) })
-      .catch(console.error)
+      .catch((e: unknown) => {
+        console.error(e)
+        setError((e as Error).message ?? 'Failed to load registry')
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -188,7 +192,7 @@ export default function BundlesView() {
       return e.name.toLowerCase().includes(q) ||
         e.description.toLowerCase().includes(q) ||
         e.namespace.toLowerCase().includes(q) ||
-        e.tags.some(t => t.toLowerCase().includes(q))
+        (e.tags ?? []).some(t => t.toLowerCase().includes(q))
     }
     return true
   })
@@ -196,6 +200,23 @@ export default function BundlesView() {
   const featured = filtered.filter(e => e.featured && !installedIds.has(e.id))
   const rest     = filtered.filter(e => !e.featured && !installedIds.has(e.id))
   const installedEntries = filtered.filter(e => installedIds.has(e.id))
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center bg-[var(--bg-page)]">
+        <div className="text-center space-y-2">
+          <p className="text-xs text-[var(--text-muted)]">Failed to load registry</p>
+          <p className="text-[10px] text-[var(--text-very-muted)] font-mono">{error}</p>
+          <button
+            onClick={() => { setError(null); setLoading(true); Promise.all([fetchRegistry(), listBundles()]).then(([reg, inst]) => { setRegistry(reg); setInstalled(inst) }).catch((e: unknown) => { setError((e as Error).message ?? 'Failed to load registry') }).finally(() => setLoading(false)) }}
+            className="text-[10px] px-3 py-1 rounded bg-[var(--bg-sidebar-active)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full bg-[var(--bg-page)] overflow-hidden">

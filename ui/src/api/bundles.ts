@@ -10,7 +10,7 @@ export interface RegistryEntry {
   author: string
   repo: string
   install: string          // e.g. "amplifier bundle add superpowers"
-  rating: number
+  rating: number | null
   tags: string[]
   featured?: boolean
   community?: boolean
