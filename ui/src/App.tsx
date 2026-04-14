@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import ProjectsGrid from './views/projects'
+import ProjectDetail from './views/projects/ProjectDetail'
 import JobsView from './views/jobs'
 import MirrorView from './views/mirror'
 import BundlesView from './views/bundles'
@@ -59,6 +60,7 @@ function SettingsIcon() {
 export default function App() {
   const [active, setActive]             = useState<Tab>('projects')
   const [showFeedback, setShowFeedback] = useState(false)
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
 
   // Subscribe to the server-sent focus stream. When the tray's "Open Dashboard"
   // is clicked and this tab is already open, the server broadcasts a "focus" event
@@ -157,7 +159,14 @@ export default function App() {
 
       {/* ── Section content ─────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden">
-        {active === 'projects' && <ProjectsGrid onSelectProject={(id) => console.log('Selected:', id)} />}
+        {active === 'projects' && (
+          selectedProjectId
+            ? <ProjectDetail
+                projectId={selectedProjectId}
+                onBack={() => setSelectedProjectId(null)}
+              />
+            : <ProjectsGrid onSelectProject={setSelectedProjectId} />
+        )}
         {active === 'jobs'     && <JobsView />}
         {active === 'mirror'   && <MirrorView />}
         {active === 'bundles'  && <BundlesView />}
