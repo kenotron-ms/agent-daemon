@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"strings"
 
 	"github.com/ms/amplifier-app-loom/internal/amplifier"
 )
@@ -48,6 +49,7 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 	if terminal == "" {
 		terminal = "Ghostty"
 	}
+	terminal = strings.TrimSuffix(terminal, ".app")
 
 	switch req.Mode {
 	case "new":
