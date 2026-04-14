@@ -34,7 +34,7 @@ export default function SessionsList({ projectId }: Props) {
     catch (err) { console.error('Failed to resume session:', err) }
   }
 
-  if (loading) return <div style={{ padding: 16, color: '#6b7280' }}>Loading sessions...</div>
+  if (loading) return <div style={{ padding: 16, color: 'var(--text-very-muted)' }}>Loading sessions...</div>
 
   return (
     <div style={{ padding: 16 }}>
@@ -52,7 +52,7 @@ export default function SessionsList({ projectId }: Props) {
       </button>
 
       {sessions.length === 0 ? (
-        <div style={{ color: '#6b7280', fontSize: 13, paddingTop: 16 }}>
+        <div style={{ color: 'var(--text-very-muted)', fontSize: 13, paddingTop: 16 }}>
           No Amplifier sessions found for this project.
         </div>
       ) : (
@@ -60,15 +60,15 @@ export default function SessionsList({ projectId }: Props) {
           {sessions.map(s => (
             <div key={s.id} style={{
               display: 'flex', alignItems: 'center',
-              padding: '10px 12px', borderBottom: '1px solid #252832', gap: 12,
+              padding: '10px 12px', borderBottom: '1px solid var(--border)', gap: 12,
             }}>
               <span style={{
-                flex: 1, fontSize: 13, color: '#e5e7eb', fontWeight: 500,
+                flex: 1, fontSize: 13, color: 'var(--text-primary)', fontWeight: 500,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {s.name || s.id}
               </span>
-              <span style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-very-muted)', flexShrink: 0 }}>
                 {formatTimestamp(s.lastActiveAt || s.createdAt)}
               </span>
               <button
@@ -76,11 +76,11 @@ export default function SessionsList({ projectId }: Props) {
                 style={{
                   fontSize: 12, fontWeight: 500, padding: '4px 12px',
                   color: '#14b8a6', background: 'transparent',
-                  border: '1px solid #252832', borderRadius: 4,
+                  border: '1px solid var(--border)', borderRadius: 4,
                   cursor: 'pointer', flexShrink: 0,
                 }}
                 onMouseEnter={e => (e.currentTarget.style.borderColor = '#14b8a6')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = '#252832')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
               >
                 Open
               </button>

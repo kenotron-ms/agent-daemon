@@ -4,34 +4,35 @@
 
 /* ── Canvas Design Tokens ──────────────────────────────────────────────── */
 :root {
-  /* Backgrounds — warm neutral palette */
-  --bg-page:           #F0EBE3;
-  --bg-header:         #E8E2D8;
-  --bg-sidebar:        #F0EBE3;
-  --bg-sidebar-active: #E8E0D4;
-  --bg-pane-title:     #DDD5C8;
-  --bg-terminal:       #0F0E0C;
-  --bg-right:          #F7F4EF;
-  --bg-modal:          #FAF8F4;
-  --bg-input:          #F5F2EC;
+  /* Backgrounds */
+  --bg-page:           #12141a;   /* darkest — page background */
+  --bg-header:         #1a1d25;   /* nav bar */
+  --bg-sidebar:        #1a1d25;   /* sidebars */
+  --bg-sidebar-active: #252832;   /* selected list item */
+  --bg-pane-title:     #252832;   /* pane headers / title bars */
+  --bg-terminal:       #0a0b0e;   /* terminal surface (darkest) */
+  --bg-right:          #1c1f27;   /* right panels */
+  --bg-modal:          #1c1f27;   /* modals / card surfaces */
+  --bg-input:          #252832;   /* input fields */
 
   /* Borders */
-  --border:            #DDD5C8;
-  --border-dark:       #3A3530;
+  --border:            #252832;   /* primary borders */
+  --border-dark:       #3a3f4b;   /* hover / emphasis borders */
 
   /* Text */
-  --text-primary:      #1C1A16;
-  --text-muted:        #8A8278;
-  --text-very-muted:   #A09888;
-  --text-terminal:     #C8C4BC;
+  --text-primary:      #f9fafb;   /* white — primary text */
+  --text-muted:        #9ca3af;   /* gray — secondary text */
+  --text-very-muted:   #6b7280;   /* dark gray — tertiary / placeholder */
+  --text-terminal:     #c8c4bc;   /* terminal output text */
 
-  /* Accent */
-  --amber:             #F59E0B;
-  --amber-subtle:      rgba(245, 158, 11, 0.08);
-  --amber-border:      rgba(245, 158, 11, 0.20);
-  --green:             #4CAF74;
-  --red:               #E53935;
-  --terracotta:        #C4784A;
+  /* Accents */
+  --amber:             #f59e0b;   /* tab indicators, status */
+  --amber-subtle:      rgba(245, 158, 11, 0.12);
+  --amber-border:      rgba(245, 158, 11, 0.25);
+  --green:             #4caf74;   /* success */
+  --red:               #e53935;   /* error */
+  --teal:              #14b8a6;   /* action buttons, interactive */
+  --terracotta:        #c4784a;   /* warm accent */
 
   /* Typography */
   --font-ui:   -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
@@ -66,8 +67,8 @@ html, body, #root {
 /* ── Canvas scrollbar — warm neutral ────────────────────────────────────── */
 .canvas-scroll::-webkit-scrollbar        { width: 4px; height: 4px; }
 .canvas-scroll::-webkit-scrollbar-track  { background: transparent; }
-.canvas-scroll::-webkit-scrollbar-thumb  { background: rgba(28,26,22,0.12); border-radius: 2px; }
-.canvas-scroll::-webkit-scrollbar-thumb:hover { background: rgba(28,26,22,0.20); }
+.canvas-scroll::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.08); border-radius: 2px; }
+.canvas-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
 /* ── highlight.js override — use github light for warm feel ─────────────── */
 .hljs {

@@ -26,8 +26,8 @@ export default function ProjectCard({ project, sessionCount, onSelect }: Props) 
     <div
       onClick={() => onSelect(project.id)}
       style={{
-        background: '#1c1f27',
-        border: '1px solid #252832',
+        background: 'var(--bg-modal)',
+        border: '1px solid var(--border)',
         borderRadius: 8,
         boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
         padding: 16,
@@ -37,24 +37,24 @@ export default function ProjectCard({ project, sessionCount, onSelect }: Props) 
         gap: 8,
         transition: 'border-color 0.15s ease',
       }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = '#3a3f4b')}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = '#252832')}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-dark)')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{
-          fontSize: 14, fontWeight: 600, color: '#ffffff',
+          fontSize: 14, fontWeight: 600, color: 'var(--text-primary)',
           flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {project.name}
         </span>
         <span style={{
           width: 8, height: 8, borderRadius: '50%',
-          background: hasActive ? '#4CAF74' : '#6b7280', flexShrink: 0,
+          background: hasActive ? '#4CAF74' : 'var(--text-very-muted)', flexShrink: 0,
         }} />
       </div>
 
       <div style={{
-        fontFamily: 'monospace', fontSize: 12, color: '#4b5563',
+        fontFamily: 'monospace', fontSize: 12, color: 'var(--text-muted)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
         {shortenPath(project.path)}
@@ -65,7 +65,7 @@ export default function ProjectCard({ project, sessionCount, onSelect }: Props) 
           display: 'inline-block', fontSize: 11, fontWeight: 500,
           padding: '2px 8px', borderRadius: 9999,
           background: hasActive ? 'rgba(76,175,116,0.15)' : 'rgba(107,114,128,0.15)',
-          color: hasActive ? '#4CAF74' : '#6b7280',
+          color: hasActive ? '#4CAF74' : 'var(--text-very-muted)',
         }}>
           {sessionCount} {sessionCount === 1 ? 'session' : 'sessions'}
         </span>
@@ -75,12 +75,12 @@ export default function ProjectCard({ project, sessionCount, onSelect }: Props) 
         onClick={handleNewSession}
         style={{
           width: '100%', padding: '6px 0', marginTop: 4,
-          fontSize: 12, fontWeight: 500, color: '#9ca3af',
-          background: 'transparent', border: '1px solid #252832',
+          fontSize: 12, fontWeight: 500, color: 'var(--text-muted)',
+          background: 'transparent', border: '1px solid var(--border)',
           borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s ease',
         }}
         onMouseEnter={e => { e.currentTarget.style.borderColor = '#14b8a6'; e.currentTarget.style.color = '#14b8a6' }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = '#252832'; e.currentTarget.style.color = '#9ca3af' }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)' }}
       >
         New Session
       </button>

@@ -40,16 +40,16 @@ export default function ProjectsGrid({ onSelectProject }: Props) {
   }
 
   if (loading) {
-    return <div style={{ background: '#12141a', height: '100%', padding: 24, color: '#6b7280' }}>Loading projects...</div>
+    return <div style={{ background: 'var(--bg-page)', height: '100%', padding: 24, color: 'var(--text-very-muted)' }}>Loading projects...</div>
   }
 
   return (
-    <div style={{ background: '#12141a', height: '100%', overflowY: 'auto', padding: 24 }}>
+    <div style={{ background: 'var(--bg-page)', height: '100%', overflowY: 'auto', padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
         <button style={{
           fontSize: 12, fontWeight: 500, padding: '6px 16px',
-          color: '#9ca3af', background: 'transparent',
-          border: '1px solid #252832', borderRadius: 6, cursor: 'pointer',
+          color: 'var(--text-muted)', background: 'transparent',
+          border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
         }}>
           Add Project
         </button>
@@ -59,7 +59,7 @@ export default function ProjectsGrid({ onSelectProject }: Props) {
         <div key={workspace} style={{ marginBottom: 32 }}>
           <div style={{
             fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-            letterSpacing: '0.08em', color: '#6b7280', marginBottom: 12,
+            letterSpacing: '0.08em', color: 'var(--text-very-muted)', marginBottom: 12,
           }}>
             {workspace}
           </div>
@@ -77,7 +77,7 @@ export default function ProjectsGrid({ onSelectProject }: Props) {
       ))}
 
       {projects.length === 0 && (
-        <div style={{ color: '#6b7280', textAlign: 'center', paddingTop: 64, fontSize: 13 }}>
+        <div style={{ color: 'var(--text-very-muted)', textAlign: 'center', paddingTop: 64, fontSize: 13 }}>
           No projects found. Add a project to get started.
         </div>
       )}

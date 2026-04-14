@@ -19,20 +19,20 @@ const TABS: { id: Tab; label: string }[] = [
 function LoomLogo() {
   return (
     <svg width="22" height="22" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', flexShrink: 0 }}>
-      <rect width="36" height="36" rx="7" fill="#1C1A16"/>
+      <rect width="36" height="36" rx="7" fill="#f9fafb"/>
       {/* Horizontal stripes (teal) */}
-      <rect x="4" y="4"  width="28" height="6" fill="#5A7E85"/>
-      <rect x="4" y="15" width="28" height="6" fill="#5A7E85"/>
-      <rect x="4" y="26" width="28" height="6" fill="#5A7E85"/>
+      <rect x="4" y="4"  width="28" height="6" fill="#14b8a6"/>
+      <rect x="4" y="15" width="28" height="6" fill="#14b8a6"/>
+      <rect x="4" y="26" width="28" height="6" fill="#14b8a6"/>
       {/* Vertical stripes (mustard) on top */}
-      <rect x="4"  y="4" width="6" height="28" fill="#D09D59"/>
-      <rect x="15" y="4" width="6" height="28" fill="#D09D59"/>
-      <rect x="26" y="4" width="6" height="28" fill="#D09D59"/>
+      <rect x="4"  y="4" width="6" height="28" fill="#f59e0b"/>
+      <rect x="15" y="4" width="6" height="28" fill="#f59e0b"/>
+      <rect x="26" y="4" width="6" height="28" fill="#f59e0b"/>
       {/* Teal back on top at corners — weave pattern */}
-      <rect x="4"  y="4"  width="6" height="6" fill="#5A7E85"/>
-      <rect x="26" y="4"  width="6" height="6" fill="#5A7E85"/>
-      <rect x="4"  y="26" width="6" height="6" fill="#5A7E85"/>
-      <rect x="26" y="26" width="6" height="6" fill="#5A7E85"/>
+      <rect x="4"  y="4"  width="6" height="6" fill="#14b8a6"/>
+      <rect x="26" y="4"  width="6" height="6" fill="#14b8a6"/>
+      <rect x="4"  y="26" width="6" height="6" fill="#14b8a6"/>
+      <rect x="26" y="26" width="6" height="6" fill="#14b8a6"/>
     </svg>
   )
 }

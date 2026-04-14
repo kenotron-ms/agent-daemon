@@ -17,13 +17,13 @@ function Stars({ rating }: { rating: number }) {
   const full    = Math.floor(rating)
   const hasHalf = rating - full >= 0.4
   return (
-    <span className="flex items-center gap-0.5 text-[#F59E0B] text-[10px]">
+    <span className="flex items-center gap-0.5 text-[var(--amber)] text-[10px]">
       {Array.from({ length: 5 }, (_, i) => {
         if (i < full)    return <span key={i}>★</span>
         if (i === full && hasHalf) return <span key={i} className="opacity-60">★</span>
-        return <span key={i} className="text-[#DDD5C8]">★</span>
+        return <span key={i} className="text-[var(--border-dark)]">★</span>
       })}
-      <span className="text-[#8A8278] ml-0.5">{rating.toFixed(1)}</span>
+      <span className="text-[var(--text-muted)] ml-0.5">{rating.toFixed(1)}</span>
     </span>
   )
 }
@@ -43,31 +43,31 @@ function BundleCard({
   onRemove: () => void
 }) {
   return (
-    <div className="flex flex-col bg-[#E8E2D8] border border-[#DDD5C8] rounded-lg p-3 hover:border-[#8A8278] transition-colors">
+    <div className="flex flex-col bg-[var(--bg-sidebar)] border border-[var(--border)] rounded-lg p-3 hover:border-[var(--border-dark)] transition-colors">
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="min-w-0">
-          <span className="text-xs font-semibold text-[#1C1A16] block truncate">{entry.name}</span>
-          <span className="text-[9px] text-[#A09888]">{entry.namespace}</span>
+          <span className="text-xs font-semibold text-[var(--text-primary)] block truncate">{entry.name}</span>
+          <span className="text-[9px] text-[var(--text-very-muted)]">{entry.namespace}</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {entry.featured && (
-            <span className="text-[8px] px-1 py-0.5 rounded bg-[#F59E0B]/20 text-[#F59E0B]">featured</span>
+            <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--amber-subtle)] text-[var(--amber)]">featured</span>
           )}
-          <span className={`text-[9px] px-1.5 py-0.5 rounded capitalize ${TYPE_COLORS[entry.type] ?? 'bg-[#E8E0D4] text-[#8A8278]'}`}>
+          <span className={`text-[9px] px-1.5 py-0.5 rounded capitalize ${TYPE_COLORS[entry.type] ?? 'bg-[var(--bg-sidebar-active)] text-[var(--text-muted)]'}`}>
             {entry.type}
           </span>
         </div>
       </div>
 
       {/* Description */}
-      <p className="text-[10px] text-[#8A8278] leading-relaxed mb-2 flex-1 line-clamp-2">
+      <p className="text-[10px] text-[var(--text-muted)] leading-relaxed mb-2 flex-1 line-clamp-2">
         {entry.description}
       </p>
 
       {/* LLM verdict */}
       {entry.llmVerdict && (
-        <p className="text-[9px] text-[#A09888] italic mb-2 line-clamp-2">
+        <p className="text-[9px] text-[var(--text-very-muted)] italic mb-2 line-clamp-2">
           "{entry.llmVerdict}"
         </p>
       )}
@@ -77,7 +77,7 @@ function BundleCard({
         <Stars rating={entry.rating} />
         <div className="flex gap-1 flex-wrap justify-end">
           {entry.tags.slice(0, 3).map(t => (
-            <span key={t} className="text-[8px] px-1 py-0.5 rounded bg-[#E8E0D4] text-[#A09888]">
+            <span key={t} className="text-[8px] px-1 py-0.5 rounded bg-[var(--bg-sidebar-active)] text-[var(--text-very-muted)]">
               {t}
             </span>
           ))}
@@ -90,7 +90,7 @@ function BundleCard({
           href={entry.repo}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[10px] text-[#F59E0B] hover:underline truncate font-mono"
+          className="text-[10px] text-[var(--amber)] hover:underline truncate font-mono"
           title={entry.repo}
         >
           {entry.repo.replace('https://github.com/', '')}
@@ -197,17 +197,17 @@ export default function BundlesView() {
   const installedEntries = filtered.filter(e => installedIds.has(e.id))
 
   return (
-    <div className="flex h-full bg-[#F0EBE3] overflow-hidden">
+    <div className="flex h-full bg-[var(--bg-page)] overflow-hidden">
 
       {/* ── Left sidebar: installed bundles ────────────────────────────── */}
-      <div className="w-60 shrink-0 flex flex-col border-r border-[#DDD5C8] overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[#DDD5C8]">
-          <span className="text-[#8A8278] text-[10px] uppercase tracking-wider">Installed</span>
-          <span className="text-[10px] text-[#A09888]">{installed.length}</span>
+      <div className="w-60 shrink-0 flex flex-col border-r border-[var(--border)] overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)]">
+          <span className="text-[var(--text-muted)] text-[10px] uppercase tracking-wider">Installed</span>
+          <span className="text-[10px] text-[var(--text-very-muted)]">{installed.length}</span>
         </div>
 
         {/* Install loom button */}
-        <div className="px-3 py-2 border-b border-[#E8E0D4]">
+        <div className="px-3 py-2 border-b border-[var(--border)]">
           <button
             onClick={async () => {
               showToast('Running: amplifier bundle add …')
@@ -228,7 +228,7 @@ export default function BundlesView() {
                 }
               } catch { showToast('Run: loom bundle install') }
             }}
-            className="w-full text-left text-[10px] px-2 py-1.5 rounded bg-[#E8E0D4] text-[#8A8278] hover:bg-[#DDD5C8] hover:text-[#1C1A16] transition-colors"
+            className="w-full text-left text-[10px] px-2 py-1.5 rounded bg-[var(--bg-sidebar-active)] text-[var(--text-muted)] hover:bg-[var(--border-dark)] hover:text-[var(--text-primary)] transition-colors"
             title="Run: loom bundle install"
           >
             + Install loom as app bundle
@@ -237,22 +237,22 @@ export default function BundlesView() {
 
         <div className="flex-1 overflow-y-auto">
           {installed.length === 0 && !loading && (
-            <div className="px-3 py-4 text-[10px] text-[#A09888] text-center">
+            <div className="px-3 py-4 text-[10px] text-[var(--text-very-muted)] text-center">
               No bundles installed yet.{'\n'}Browse the registry →
             </div>
           )}
           {installed.map(b => (
-            <div key={b.id} className="flex items-center gap-2 px-3 py-2 border-b border-[#E8E0D4] group">
+            <div key={b.id} className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] group">
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-[#1C1A16] truncate">{b.name || b.id}</div>
-                <div className="text-[9px] text-[#A09888] truncate">{b.installSpec}</div>
+                <div className="text-[11px] text-[var(--text-primary)] truncate">{b.name || b.id}</div>
+                <div className="text-[9px] text-[var(--text-very-muted)] truncate">{b.installSpec}</div>
               </div>
               {/* Toggle */}
               <button
                 onClick={() => handleToggle(b.id)}
                 title={b.enabled ? 'Disable' : 'Enable'}
                 className={`w-7 h-4 rounded-full transition-colors shrink-0 ${
-                  b.enabled ? 'bg-[#4CAF74]' : 'bg-[#E8E0D4]'
+                  b.enabled ? 'bg-[#4CAF74]' : 'bg-[var(--bg-sidebar-active)]'
                 }`}
               >
                 <div className={`w-3 h-3 rounded-full bg-white mx-auto transition-transform ${
@@ -262,7 +262,7 @@ export default function BundlesView() {
               {/* Remove */}
               <button
                 onClick={() => handleRemove(b.id)}
-                className="opacity-0 group-hover:opacity-100 text-[#A09888] hover:text-[#E53935] text-xs shrink-0"
+                className="opacity-0 group-hover:opacity-100 text-[var(--text-very-muted)] hover:text-[#E53935] text-xs shrink-0"
                 title="Remove"
               >×</button>
             </div>
@@ -273,8 +273,8 @@ export default function BundlesView() {
       {/* ── Right: Registry browser ─────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Registry header */}
-        <div className="flex items-center gap-3 px-4 py-2 border-b border-[#E8E0D4] bg-gradient-to-r from-[#F0EBE3] to-[#E8E2D8] shrink-0">
-          <span className="text-[10px] text-[#A09888] uppercase tracking-wider">Amplifier Registry</span>
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sidebar)] shrink-0">
+          <span className="text-[10px] text-[var(--text-very-muted)] uppercase tracking-wider">Amplifier Registry</span>
           <a
             href="https://kenotron-ms.github.io/amplifier-registry/"
             target="_blank"
@@ -294,12 +294,12 @@ export default function BundlesView() {
         </div>
 
         {/* Search + filters */}
-        <div className="px-4 py-3 border-b border-[#DDD5C8] shrink-0 space-y-2">
+        <div className="px-4 py-3 border-b border-[var(--border)] shrink-0 space-y-2">
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search registry…"
-            className="w-full px-3 py-1.5 text-xs bg-[#F0EBE3] border border-[#DDD5C8] rounded text-[#1C1A16] placeholder:text-[#A09888] focus:outline-none focus:border-[#F59E0B]"
+            className="w-full px-3 py-1.5 text-xs bg-[var(--bg-input)] border border-[var(--border)] rounded text-[var(--text-primary)] placeholder:text-[var(--text-very-muted)] focus:outline-none focus:border-[var(--amber)]"
           />
           <div className="flex gap-4">
             {/* Category */}
@@ -311,7 +311,7 @@ export default function BundlesView() {
                   className={`text-[9px] px-2 py-0.5 rounded capitalize ${
                     category === c
                       ? 'bg-[#388bfd]/20 text-[#F59E0B]'
-                      : 'text-[#A09888] hover:text-[#8A8278]'
+                      : 'text-[var(--text-very-muted)] hover:text-[var(--text-muted)]'
                   }`}
                 >
                   {c}
@@ -326,7 +326,7 @@ export default function BundlesView() {
                   className={`text-[9px] px-2 py-0.5 rounded capitalize ${
                     typeFilter === t
                       ? `${TYPE_COLORS[t] ?? 'bg-[#388bfd]/20 text-[#F59E0B]'}`
-                      : 'text-[#A09888] hover:text-[#8A8278]'
+                      : 'text-[var(--text-very-muted)] hover:text-[var(--text-muted)]'
                   }`}
                 >
                   {t}
@@ -339,7 +339,7 @@ export default function BundlesView() {
         {/* Card grid */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
           {loading && (
-            <div className="flex items-center justify-center h-32 text-[#A09888] text-xs">
+            <div className="flex items-center justify-center h-32 text-[var(--text-very-muted)] text-xs">
               Loading registry…
             </div>
           )}
@@ -347,7 +347,7 @@ export default function BundlesView() {
           {/* Already installed — shown at top if matches filter */}
           {installedEntries.length > 0 && (
             <section>
-              <h3 className="text-[10px] text-[#A09888] uppercase tracking-wider mb-2">Installed</h3>
+              <h3 className="text-[10px] text-[var(--text-very-muted)] uppercase tracking-wider mb-2">Installed</h3>
               <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
                 {installedEntries.map(e => (
                   <BundleCard
@@ -386,7 +386,7 @@ export default function BundlesView() {
           {rest.length > 0 && (
             <section>
               {featured.length > 0 && (
-                <h3 className="text-[10px] text-[#A09888] uppercase tracking-wider mb-2">
+                <h3 className="text-[10px] text-[var(--text-very-muted)] uppercase tracking-wider mb-2">
                   Community ({rest.length})
                 </h3>
               )}
@@ -406,7 +406,7 @@ export default function BundlesView() {
           )}
 
           {!loading && filtered.length === 0 && (
-            <div className="flex items-center justify-center h-32 text-[#A09888] text-xs">
+            <div className="flex items-center justify-center h-32 text-[var(--text-very-muted)] text-xs">
               No bundles match your filters.
             </div>
           )}
@@ -415,7 +415,7 @@ export default function BundlesView() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 px-3 py-2 bg-[#E8E2D8] border border-[#DDD5C8] rounded text-xs text-[#1C1A16] shadow-lg">
+        <div className="fixed bottom-4 right-4 z-50 px-3 py-2 bg-[var(--bg-modal)] border border-[var(--border)] rounded text-xs text-[var(--text-primary)] shadow-lg">
           {toast}
         </div>
       )}
