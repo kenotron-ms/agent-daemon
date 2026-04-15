@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import Convert from 'ansi-to-html'
 import { Job, JobRun, listJobRuns, triggerJob } from '../../api/jobs'
 import { useRunStream } from './useRunStream'
+import JobConfigModal from './JobConfigModal'
 
 const ansiConvert = new Convert({ escapeXML: true, newline: false })
 
-interface Props { job: Job }
+interface Props {
+  job: Job
+  onUpdate: (updated: Job) => void
+}
 
 function formatRunDate(iso: string): string {
   const d = new Date(iso)
@@ -34,9 +38,10 @@ function triggerBadge(type: string): { label: string; bg: string; color: string 
   return { label: 'Manual', bg: 'var(--bg-pane-title)', color: 'var(--text-muted)' }
 }
 
-export default function RunDetail({ job }: Props) {
+export default function RunDetail({ job, onUpdate }: Props) {
   const [runs, setRuns]               = useState<JobRun[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [editOpen, setEditOpen]       = useState(false)
   const logOutput = useRunStream(activeRunId)
   const logHtml   = useMemo(() => ansiConvert.toHtml(logOutput), [logOutput])
   const logRef    = useRef<HTMLDivElement>(null)
@@ -63,6 +68,11 @@ export default function RunDetail({ job }: Props) {
     } catch (e) { console.error('triggerJob:', e) }
   }
 
+  const handleSaved = useCallback((updated: Job) => {
+    setEditOpen(false)
+    onUpdate(updated)
+  }, [onUpdate])
+
   const activeRun = runs.find(r => r.id === activeRunId) ?? null
   const badge = triggerBadge(job.trigger.type)
 
@@ -82,10 +92,28 @@ export default function RunDetail({ job }: Props) {
             background: 'var(--bg-modal)', border: '1px solid var(--border-dark)',
             borderRadius: 3, color: 'var(--text-primary)', cursor: 'pointer',
           }}
+        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-pane-title)'}
+        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-modal)'}
+      >▶ Run Now</button>
+      <button
+        onClick={() => setEditOpen(true)}
+        style={{
+          marginLeft: 8, fontSize: 11, padding: '4px 12px',
+          background: 'var(--bg-modal)', border: '1px solid var(--border-dark)',
+          borderRadius: 3, color: 'var(--text-muted)', cursor: 'pointer',
+        }}
           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-pane-title)'}
           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-modal)'}
-        >▶ Run Now</button>
+      >⚙ Edit</button>
       </div>
+
+    {editOpen && (
+      <JobConfigModal
+        job={job}
+        onClose={() => setEditOpen(false)}
+        onSaved={handleSaved}
+      />
+    )}
 
       {/* Master-detail split */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>

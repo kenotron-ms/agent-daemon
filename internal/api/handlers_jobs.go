@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"time"
 
@@ -66,13 +67,25 @@ func (s *Server) updateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read body once so we can both decode values and check which keys were provided.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read body: "+err.Error())
+		return
+	}
+
 	var updates types.Job
-	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+	if err := json.Unmarshal(body, &updates); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 
-	// Merge updates into existing
+	// provided tracks which top-level keys were explicitly in the request.
+	// Used for fields whose zero value (false, 0) is a valid intentional update.
+	var provided map[string]json.RawMessage
+	_ = json.Unmarshal(body, &provided)
+
+	// Merge string/struct fields — empty string means "not provided".
 	if updates.Name != "" {
 		existing.Name = updates.Name
 	}
@@ -91,10 +104,17 @@ func (s *Server) updateJob(w http.ResponseWriter, r *http.Request) {
 	if updates.Timeout != "" {
 		existing.Timeout = updates.Timeout
 	}
-	existing.MaxRetries = updates.MaxRetries
-	existing.Enabled = updates.Enabled
 
-	// Merge executor config — replace whichever executor section is provided
+	// Bool and int fields: only update when the key was explicitly present in the JSON,
+	// so a partial patch (e.g. just "amplifier": {...}) never clobbers enabled/maxRetries.
+	if _, ok := provided["enabled"]; ok {
+		existing.Enabled = updates.Enabled
+	}
+	if _, ok := provided["maxRetries"]; ok {
+		existing.MaxRetries = updates.MaxRetries
+	}
+
+	// Executor config — pointer types, nil means "not provided".
 	if updates.Executor != "" {
 		existing.Executor = updates.Executor
 	}

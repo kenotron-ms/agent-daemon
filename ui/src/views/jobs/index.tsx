@@ -31,6 +31,11 @@ export default function JobsView() {
     } catch (e) { console.error('deleteJob:', e) }
   }
 
+  // Called when RunDetail saves a job edit — patch in-memory list instantly
+  const handleUpdate = useCallback((updated: Job) => {
+    setJobs(prev => prev.map(j => j.id === updated.id ? updated : j))
+  }, [])
+
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg-page)' }}>
       <JobList
@@ -42,7 +47,7 @@ export default function JobsView() {
       />
       <div className="flex-1 overflow-hidden">
         {selectedJob
-          ? <RunDetail job={selectedJob} />
+          ? <RunDetail job={selectedJob} onUpdate={handleUpdate} />
           : <ChatView onResponse={loadJobs} />
         }
       </div>
