@@ -32,6 +32,9 @@ func ListProjectSessions(projectPath string) ([]AmplifierSession, error) {
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return []AmplifierSession{}, nil
+		}
 		return nil, err
 	}
 

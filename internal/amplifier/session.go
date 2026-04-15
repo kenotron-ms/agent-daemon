@@ -26,10 +26,17 @@ func projectSlug(projectPath string) string {
 }
 
 // sessionsDir returns the path to amplifier's sessions directory for projectPath.
+// It resolves symlinks in projectPath so that /tmp → /private/tmp on macOS (and
+// similar on other systems) matches how Amplifier itself resolves the working
+// directory when it writes session metadata.
 func sessionsDir(projectPath string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
+	}
+	// Best-effort symlink resolution; ignore errors (e.g. path doesn't exist yet).
+	if resolved, err := filepath.EvalSymlinks(projectPath); err == nil {
+		projectPath = resolved
 	}
 	return filepath.Join(home, ".amplifier", "projects", projectSlug(projectPath), "sessions"), nil
 }
