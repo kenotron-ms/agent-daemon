@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kardianos/service"
@@ -38,6 +39,9 @@ Use --system to install system-wide (starts at boot, requires admin/sudo).`,
 		if err != nil {
 			return err
 		}
+		// Stop first if already running — clean slate before (re)install.
+		_ = service.Control(svc, "stop")
+
 		if err := service.Control(svc, "install"); err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
 				return fmt.Errorf("install failed: %w\n\nTip: system-level install requires sudo", err)
@@ -85,9 +89,37 @@ Use --system to install system-wide (starts at boot, requires admin/sudo).`,
 			}
 		}
 
-		fmt.Println("\n  Run 'loom start' to start it.")
+		// Start the server immediately after installing.
+		fmt.Println("\nStarting loom...")
+		if startErr := service.Control(svc, "start"); startErr != nil {
+			fmt.Printf("  ⚠  Could not start automatically: %v\n  Run 'loom start' to start manually.\n", startErr)
+		} else {
+			fmt.Println("  ✓ loom is running at http://localhost:7700")
+		}
+
+		// Register the Amplifier app bundle if Amplifier is detected.
+		installAmplifierBundleIfDetected()
+
 		return nil
 	},
+}
+
+// installAmplifierBundleIfDetected checks for ~/.amplifier/settings.yaml and,
+// if found, registers the loom Amplifier app bundle so it's active in every session.
+func installAmplifierBundleIfDetected() {
+	home, _ := os.UserHomeDir()
+	settingsPath := filepath.Join(home, ".amplifier", "settings.yaml")
+	if _, err := os.Stat(settingsPath); err != nil {
+		return // Amplifier not detected — skip silently
+	}
+	fmt.Println("\nRegistering Amplifier app bundle...")
+	spec := "git+https://github.com/kenotron-ms/amplifier-app-loom@main"
+	if err := runAmplifierBundleAdd(spec); err != nil {
+		fmt.Println("  ⚠  Could not register Amplifier bundle — run manually:")
+		fmt.Printf("       amplifier bundle add %s --app\n", spec)
+	} else {
+		fmt.Println("  ✓ Amplifier app bundle registered (active in every session)")
+	}
 }
 
 var uninstallCmd = &cobra.Command{

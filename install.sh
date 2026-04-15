@@ -91,24 +91,7 @@ if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
   echo ""
 fi
 
-# ── Amplifier bundle ─────────────────────────────────────────────────────────
-if command -v amplifier >/dev/null 2>&1; then
-  echo "Registering Amplifier app bundle..."
-  if amplifier bundle add "git+https://github.com/kenotron-ms/amplifier-app-loom@main" --app; then
-    echo "✓ Amplifier app bundle registered (active in every session)"
-  else
-    echo "⚠ Could not register Amplifier bundle — run manually:"
-    echo "    amplifier bundle add git+https://github.com/kenotron-ms/amplifier-app-loom@main --app"
-  fi
-else
-  echo ""
-  echo "Note: Amplifier not found — skipping bundle registration."
-  echo "      Once installed, run:"
-  echo "        amplifier bundle add git+https://github.com/kenotron-ms/amplifier-app-loom@main --app"
-fi
-
 echo ""
 echo "Next steps:"
-echo "  loom install   # register as a user-level service"
-echo "  loom start     # start the daemon"
+echo "  loom install   # register as a service and start the daemon"
 echo "  open http://localhost:7700"
