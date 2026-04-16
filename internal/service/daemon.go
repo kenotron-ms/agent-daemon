@@ -132,6 +132,8 @@ func (d *Daemon) Run() error {
 		}
 	}
 
+	cleanupStaleRuns(context.Background(), d.store)
+
 	if err := sched.Start(d.ctx); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
 	}
@@ -169,5 +171,39 @@ func (d *Daemon) Shutdown() {
 	}
 	if d.store != nil {
 		d.store.Close()
+	}
+}
+
+// cleanupStaleRuns marks any runs left in status="running" as failed.
+// These are orphans from a previous process — their goroutines are gone and
+// will never complete. Must be called before the scheduler starts so there
+// is no race with newly created runs.
+func cleanupStaleRuns(ctx context.Context, st store.Store) {
+	runs, err := st.ListRecentRuns(ctx, 0) // 0 = no limit
+	if err != nil {
+		slog.Warn("stale-run cleanup: list failed", "err", err)
+		return
+	}
+	now := time.Now()
+	n := 0
+	for _, run := range runs {
+		if run.Status != types.RunStatusRunning {
+			continue
+		}
+		run.Status = types.RunStatusFailed
+		run.EndedAt = &now
+		if run.Output == "" {
+			run.Output = "[loom restarted — run did not complete]"
+		} else {
+			run.Output += "\n[loom restarted — run did not complete]"
+		}
+		if err := st.SaveRun(ctx, run); err != nil {
+			slog.Warn("stale-run cleanup: save failed", "run", run.ID, "err", err)
+		} else {
+			n++
+		}
+	}
+	if n > 0 {
+		slog.Info("stale-run cleanup: marked runs failed", "count", n)
 	}
 }

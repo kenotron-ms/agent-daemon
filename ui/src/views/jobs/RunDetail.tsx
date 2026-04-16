@@ -32,8 +32,14 @@ function formatDuration(startIso: string, endIso?: string): string {
   return remM > 0 ? `${hrs}h ${remM}m` : `${hrs}h`
 }
 
-function triggerBadge(type: string): { label: string; bg: string; color: string } {
-  if (type === 'cron' || type === 'loop')
+function triggerBadge(run: JobRun, job: Job): { label: string; bg: string; color: string } {
+  // Explicit source field wins (set on all new runs by the backend)
+  if (run.source === 'manual')
+    return { label: 'Manual', bg: 'var(--bg-pane-title)', color: 'var(--text-muted)' }
+  if (run.source === 'scheduled')
+    return { label: 'Scheduled', bg: '#14b8a6', color: '#fff' }
+  // Fallback for old runs without a source field: infer from job trigger type
+  if (job.trigger.type === 'cron' || job.trigger.type === 'loop')
     return { label: 'Scheduled', bg: '#14b8a6', color: '#fff' }
   return { label: 'Manual', bg: 'var(--bg-pane-title)', color: 'var(--text-muted)' }
 }
@@ -82,7 +88,6 @@ export default function RunDetail({ job, onUpdate }: Props) {
   }, [onUpdate])
 
   const activeRun = runs.find(r => r.id === activeRunId) ?? null
-  const badge = triggerBadge(job.trigger.type)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-right)' }}>
@@ -149,6 +154,7 @@ export default function RunDetail({ job, onUpdate }: Props) {
             </div>
           )}
           {runs.map(run => {
+            const badge        = triggerBadge(run, job)
             const isActive     = activeRunId === run.id
             const isRunning    = run.status === 'running'
             const isSuccess    = run.status === 'success'

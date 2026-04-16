@@ -135,6 +135,10 @@ func (r *Runner) runAttempt(job *types.Job, attempt int) (stopRetrying bool) {
 		}
 	}
 
+	source := types.RunSourceScheduled
+	if job.RuntimeEnv["LOOM_TRIGGER_SOURCE"] == "manual" {
+		source = types.RunSourceManual
+	}
 	run := &types.JobRun{
 		ID:        uuid.New().String(),
 		JobID:     job.ID,
@@ -142,6 +146,7 @@ func (r *Runner) runAttempt(job *types.Job, attempt int) (stopRetrying bool) {
 		StartedAt: time.Now(),
 		Status:    types.RunStatusRunning,
 		Attempt:   attempt,
+		Source:    source,
 	}
 	_ = r.store.SaveRun(context.Background(), run)
 

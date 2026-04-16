@@ -126,6 +126,14 @@ const (
 	RunStatusCancelled RunStatus = "cancelled"
 )
 
+// RunSource records how the run was initiated.
+type RunSource string
+
+const (
+	RunSourceScheduled RunSource = "scheduled" // fired by cron/loop/watch/connector
+	RunSourceManual    RunSource = "manual"    // fired by explicit Run Now
+)
+
 type JobRun struct {
 	ID        string     `json:"id"`
 	JobID     string     `json:"jobId"`
@@ -136,6 +144,7 @@ type JobRun struct {
 	ExitCode  int        `json:"exitCode"`
 	Output    string     `json:"output"` // combined stdout+stderr (capped)
 	Attempt   int        `json:"attempt"`
+	Source    RunSource  `json:"source,omitempty"` // how this run was initiated
 }
 
 // ── Chat history ──────────────────────────────────────────────────────────────

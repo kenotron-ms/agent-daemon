@@ -68,6 +68,7 @@ export interface JobRun {
   exitCode: number
   output?: string
   attempt: number
+  source?: 'manual' | 'scheduled'  // how this run was initiated; undefined for old runs
 }
 
 export async function listJobs(): Promise<Job[]> {

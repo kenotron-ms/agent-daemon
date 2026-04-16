@@ -88,11 +88,17 @@ func (s *Scheduler) Reload() error {
 }
 
 // TriggerNow submits a job for immediate execution regardless of schedule.
+// The resulting run is stamped source="manual" so the UI can distinguish it
+// from scheduler-fired runs.
 func (s *Scheduler) TriggerNow(jobID string) error {
 	job, err := s.store.GetJob(s.ctx, jobID)
 	if err != nil {
 		return err
 	}
+	if job.RuntimeEnv == nil {
+		job.RuntimeEnv = make(map[string]string)
+	}
+	job.RuntimeEnv["LOOM_TRIGGER_SOURCE"] = "manual"
 	s.dispatch(job)
 	return nil
 }
