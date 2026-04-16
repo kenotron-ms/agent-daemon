@@ -114,3 +114,13 @@ export async function cancelRun(runId: string): Promise<void> {
   const res = await fetch(`/api/runs/${runId}/cancel`, { method: 'POST' })
   if (!res.ok) throw new Error(await res.text())
 }
+
+export async function deleteRun(runId: string): Promise<void> {
+  const res = await fetch(`/api/runs/${runId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}
+
+export async function clearJobRuns(jobId: string): Promise<void> {
+  const res = await fetch(`/api/jobs/${jobId}/runs`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+}

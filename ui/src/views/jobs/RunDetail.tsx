@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import Convert from 'ansi-to-html'
-import { Job, JobRun, listJobRuns, triggerJob, cancelRun } from '../../api/jobs'
+import { Job, JobRun, listJobRuns, triggerJob, cancelRun, deleteRun, clearJobRuns } from '../../api/jobs'
 import { useRunStream } from './useRunStream'
 import JobConfigModal from './JobConfigModal'
 
@@ -13,10 +13,15 @@ interface Props {
 
 function formatRunDate(iso: string): string {
   const d = new Date(iso)
+  const now = new Date()
   const month = d.toLocaleDateString('en-US', { month: 'short' })
   const day = d.getDate()
+  const year = d.getFullYear()
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  return `${month} ${day} · ${time}`
+  const datePart = year !== now.getFullYear()
+    ? `${month} ${day}, ${year}`
+    : `${month} ${day}`
+  return `${datePart} · ${time}`
 }
 
 function formatDuration(startIso: string, endIso?: string): string {
@@ -82,6 +87,26 @@ export default function RunDetail({ job, onUpdate }: Props) {
     } catch (e) { console.error('cancelRun:', e) }
   }
 
+  const [hoverRunId, setHoverRunId] = useState<string | null>(null)
+
+  const handleDeleteRun = async (runId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await deleteRun(runId)
+      const remaining = runs.filter(r => r.id !== runId)
+      setRuns(remaining)
+      if (activeRunId === runId) setActiveRunId(remaining[0]?.id ?? null)
+    } catch (e) { console.error('deleteRun:', e) }
+  }
+
+  const handleClearAll = async () => {
+    try {
+      await clearJobRuns(job.id)
+      setRuns([])
+      setActiveRunId(null)
+    } catch (e) { console.error('clearJobRuns:', e) }
+  }
+
   const handleSaved = useCallback((updated: Job) => {
     setEditOpen(false)
     onUpdate(updated)
@@ -145,9 +170,28 @@ export default function RunDetail({ job, onUpdate }: Props) {
 
         {/* Left column — Run List (280px) */}
         <div style={{
-          width: 280, flexShrink: 0, overflowY: 'auto',
+          width: 280, flexShrink: 0, display: 'flex', flexDirection: 'column',
           borderRight: '1px solid var(--border)', background: 'var(--bg-right)',
-        }} className="canvas-scroll">
+        }}>
+          {runs.length > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+              padding: '4px 10px', borderBottom: '1px solid var(--border)',
+              background: 'var(--bg-pane-title)', flexShrink: 0,
+            }}>
+              <button
+                onClick={handleClearAll}
+                style={{
+                  fontSize: 10, padding: '2px 8px',
+                  background: 'transparent', border: '1px solid var(--border-dark)',
+                  borderRadius: 3, color: 'var(--text-very-muted)', cursor: 'pointer',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--red)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
+              >Clear All</button>
+            </div>
+          )}
+          <div style={{ flex: 1, overflowY: 'auto' }} className="canvas-scroll">
           {runs.length === 0 && (
             <div style={{ padding: '24px 16px', fontSize: 11, color: 'var(--text-very-muted)', textAlign: 'center' }}>
               No runs yet — click ▶ Run Now to trigger a run.
@@ -155,14 +199,20 @@ export default function RunDetail({ job, onUpdate }: Props) {
           )}
           {runs.map(run => {
             const badge        = triggerBadge(run, job)
+            const isHovered    = hoverRunId === run.id
             const isActive     = activeRunId === run.id
             const isRunning    = run.status === 'running'
             const isSuccess    = run.status === 'success'
             const isCancelled  = run.status === 'cancelled'
             const isFailed     = run.status === 'failed' || run.status === 'timeout'
             return (
-              <button
+              <div
                 key={run.id}
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setHoverRunId(run.id)}
+                onMouseLeave={() => setHoverRunId(null)}
+              >
+              <button
                 onClick={() => setActiveRunId(run.id)}
                 style={{
                   width: '100%', textAlign: 'left', padding: '10px 14px',
@@ -206,8 +256,26 @@ export default function RunDetail({ job, onUpdate }: Props) {
                   </div>
                 </div>
               </button>
+              {isHovered && run.status !== 'running' && (
+                <button
+                  onClick={e => handleDeleteRun(run.id, e)}
+                  title="Delete this run"
+                  style={{
+                    position: 'absolute', top: 6, right: 8,
+                    width: 18, height: 18, borderRadius: 3,
+                    background: 'var(--bg-pane-title)', border: '1px solid var(--border-dark)',
+                    color: 'var(--text-very-muted)', cursor: 'pointer',
+                    fontSize: 11, lineHeight: '16px', padding: 0, display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--red)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-very-muted)'}
+                >×</button>
+              )}
+              </div>
             )
           })}
+          </div>
         </div>
 
         {/* Right column — Log Viewer (flex-grow) */}

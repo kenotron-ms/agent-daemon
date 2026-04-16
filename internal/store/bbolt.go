@@ -164,22 +164,13 @@ func (s *BoltStore) ListRunsForJob(_ context.Context, jobID string, limit int) (
 	err := s.db.View(func(tx *bolt.Tx) error {
 		prefix := []byte(jobID + "/")
 		c := tx.Bucket(bucketRunsByJob).Cursor()
-		var keys []string
-		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-			// key is "jobID/runID"
-			parts := bytes.SplitN(k, []byte("/"), 2)
-			if len(parts) == 2 {
-				keys = append(keys, string(parts[1]))
-			}
-		}
-		// most recent first
-		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-		if limit > 0 && len(keys) > limit {
-			keys = keys[:limit]
-		}
 		rb := tx.Bucket(bucketRuns)
-		for _, runID := range keys {
-			data := rb.Get([]byte(runID))
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			parts := bytes.SplitN(k, []byte("/"), 2)
+			if len(parts) != 2 {
+				continue
+			}
+			data := rb.Get(parts[1])
 			if data == nil {
 				continue
 			}
@@ -191,7 +182,17 @@ func (s *BoltStore) ListRunsForJob(_ context.Context, jobID string, limit int) (
 		}
 		return nil
 	})
-	return runs, err
+	if err != nil {
+		return nil, err
+	}
+	// most recent first — sort by actual timestamp, not UUID string
+	sort.Slice(runs, func(i, j int) bool {
+		return runs[i].StartedAt.After(runs[j].StartedAt)
+	})
+	if limit > 0 && len(runs) > limit {
+		runs = runs[:limit]
+	}
+	return runs, nil
 }
 
 func (s *BoltStore) ListRecentRuns(_ context.Context, limit int) ([]*types.JobRun, error) {
@@ -216,6 +217,46 @@ func (s *BoltStore) ListRecentRuns(_ context.Context, limit int) ([]*types.JobRu
 		runs = runs[:limit]
 	}
 	return runs, nil
+}
+
+func (s *BoltStore) DeleteRun(_ context.Context, id string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		data := tx.Bucket(bucketRuns).Get([]byte(id))
+		if data == nil {
+			return nil // already gone
+		}
+		var run types.JobRun
+		if err := json.Unmarshal(data, &run); err != nil {
+			return err
+		}
+		if err := tx.Bucket(bucketRuns).Delete([]byte(id)); err != nil {
+			return err
+		}
+		return tx.Bucket(bucketRunsByJob).Delete([]byte(run.JobID + "/" + id))
+	})
+}
+
+func (s *BoltStore) DeleteRunsForJob(_ context.Context, jobID string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		rb := tx.Bucket(bucketRuns)
+		ib := tx.Bucket(bucketRunsByJob)
+		prefix := []byte(jobID + "/")
+		c := ib.Cursor()
+		var indexKeys [][]byte
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			kCopy := make([]byte, len(k))
+			copy(kCopy, k)
+			indexKeys = append(indexKeys, kCopy)
+		}
+		for _, k := range indexKeys {
+			parts := bytes.SplitN(k, []byte("/"), 2)
+			if len(parts) == 2 {
+				_ = rb.Delete(parts[1])
+			}
+			_ = ib.Delete(k)
+		}
+		return nil
+	})
 }
 
 func (s *BoltStore) DeleteAllRuns(_ context.Context) error {

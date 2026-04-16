@@ -74,3 +74,25 @@ func (s *Server) listJobRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, runs)
 }
+
+func (s *Server) deleteRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, err := s.store.GetRun(r.Context(), id); err != nil {
+		writeError(w, http.StatusNotFound, "run not found")
+		return
+	}
+	if err := s.store.DeleteRun(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) clearJobRuns(w http.ResponseWriter, r *http.Request) {
+	jobID := r.PathValue("id")
+	if err := s.store.DeleteRunsForJob(r.Context(), jobID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

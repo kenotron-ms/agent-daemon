@@ -136,7 +136,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/runs/{id}", s.getRun)
 	mux.HandleFunc("GET /api/runs/{id}/stream", s.streamRun)
 	mux.HandleFunc("POST /api/runs/{id}/cancel", s.cancelRun)
+	mux.HandleFunc("DELETE /api/runs/{id}", s.deleteRun)
 	mux.HandleFunc("GET /api/jobs/{id}/runs", s.listJobRuns)
+	mux.HandleFunc("DELETE /api/jobs/{id}/runs", s.clearJobRuns)
 
 	// Daemon control
 	mux.HandleFunc("GET /api/status", s.getStatus)
