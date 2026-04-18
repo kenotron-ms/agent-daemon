@@ -18,7 +18,14 @@ import (
 
 // ── Registry proxy ────────────────────────────────────────────────────────────
 
-const registryURL = "https://raw.githubusercontent.com/kenotron-ms/amplifier-registry/main/bundles.json"
+// registryURL is the public community registry. Override with AMPLIFIER_REGISTRY_URL
+// to point at a local server during development (e.g. python3 -m http.server 8765).
+var registryURL = func() string {
+	if u := os.Getenv("AMPLIFIER_REGISTRY_URL"); u != "" {
+		return u
+	}
+	return "https://raw.githubusercontent.com/kenotron-ms/amplifier-registry/main/bundles.json"
+}()
 
 var (
 	registryCache    []json.RawMessage
@@ -258,4 +265,141 @@ func resolveAmplifier() string {
 		}
 	}
 	return "amplifier"
+}
+
+// ── Private local registry ────────────────────────────────────────────────────
+// Reads ~/.amplifier/bundle-index/index.json — maintained by the local-index CLI
+// (registry/.github/scripts/local-index.mjs).  Returns an empty array (not an
+// error) if the index has not been initialised yet.
+
+// localCapability mirrors capabilities[] entries from local-index.mjs.
+type localCapability struct {
+	Type        string  `json:"type"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Version     *string `json:"version,omitempty"`
+	SourceFile  string  `json:"sourceFile"`
+	Inferred    bool    `json:"inferred,omitempty"`
+}
+
+// localRepoEntry mirrors repos{} values from local-index.mjs index.json.
+type localRepoEntry struct {
+	RepoPath     string            `json:"repoPath"`
+	Name         string            `json:"name"`
+	Remote       string            `json:"remote"` // "org/repo" or ""
+	SHA          string            `json:"sha"`
+	ScannedAt    string            `json:"scannedAt"`
+	Capabilities []localCapability `json:"capabilities"`
+}
+
+// localIndexFile mirrors the top-level local-index.mjs index.json.
+type localIndexFile struct {
+	Version  int                       `json:"version"`
+	LastScan string                    `json:"lastScan"`
+	Repos    map[string]localRepoEntry `json:"repos"`
+}
+
+// capTypePriority controls which capability type becomes the "primary" for a repo.
+var capTypePriority = map[string]int{
+	"bundle": 0, "behavior": 1, "agent": 2,
+	"recipe": 3, "package": 4, "tool": 5,
+}
+
+// localRepoToEntry transforms a local repo into the RegistryEntry shape the UI
+// expects.  Returns nil if the repo has no capabilities.
+func localRepoToEntry(repo localRepoEntry) json.RawMessage {
+	if len(repo.Capabilities) == 0 {
+		return nil
+	}
+
+	// Pick the most significant (lowest-priority-number) capability.
+	primary := repo.Capabilities[0]
+	for _, c := range repo.Capabilities[1:] {
+		if capTypePriority[c.Type] < capTypePriority[primary.Type] {
+			primary = c
+		}
+	}
+
+	namespace, repoURL, install := "", "", ""
+	if repo.Remote != "" {
+		if idx := strings.Index(repo.Remote, "/"); idx > 0 {
+			namespace = repo.Remote[:idx]
+		}
+		repoURL = "https://github.com/" + repo.Remote
+		install = "amplifier bundle add git+https://github.com/" + repo.Remote + "@main"
+	} else {
+		repoURL = "file://" + repo.RepoPath
+		install = "amplifier bundle add git+file://" + repo.RepoPath
+	}
+
+	// Use remote slug as ID; fall back to basename of local path.
+	id := repo.Remote
+	if id == "" {
+		id = filepath.Base(repo.RepoPath)
+	}
+
+	description := ""
+	if primary.Description != nil {
+		description = *primary.Description
+	}
+
+	lastUpdated := ""
+	if len(repo.ScannedAt) >= 10 {
+		lastUpdated = repo.ScannedAt[:10]
+	}
+
+	entry := map[string]any{
+		"id":           id,
+		"name":         primary.Name,
+		"namespace":    namespace,
+		"description":  description,
+		"type":         primary.Type,
+		"category":     "dev",
+		"author":       namespace,
+		"repo":         repoURL,
+		"install":      install,
+		"rating":       nil,
+		"tags":         []string{},
+		"featured":     false,
+		"lastUpdated":  lastUpdated,
+		"private":      true,
+		"localPath":    repo.RepoPath,
+		"capabilities": repo.Capabilities,
+	}
+
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return nil
+	}
+	return json.RawMessage(b)
+}
+
+// GET /api/local-registry
+func (s *Server) getLocalRegistry(w http.ResponseWriter, r *http.Request) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot determine home dir")
+		return
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, ".amplifier", "bundle-index", "index.json"))
+	if err != nil {
+		// Not initialised yet — return empty array, not an error.
+		writeJSON(w, http.StatusOK, []json.RawMessage{})
+		return
+	}
+
+	var idx localIndexFile
+	if err := json.Unmarshal(data, &idx); err != nil {
+		writeError(w, http.StatusInternalServerError, "malformed local bundle index")
+		return
+	}
+
+	entries := make([]json.RawMessage, 0, len(idx.Repos))
+	for _, repo := range idx.Repos {
+		if e := localRepoToEntry(repo); e != nil {
+			entries = append(entries, e)
+		}
+	}
+	writeJSON(w, http.StatusOK, entries)
 }

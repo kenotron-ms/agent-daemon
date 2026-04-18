@@ -22,6 +22,16 @@ export interface RegistryEntry {
     total: number
     rating: number
   }
+  // Private / local registry fields
+  private?: boolean
+  localPath?: string
+  capabilities?: Array<{
+    type: string
+    name: string
+    description: string | null
+    version: string | null
+    sourceFile: string
+  }>
 }
 
 // ── Installed bundle types (loom config) ─────────────────────────────────────
@@ -39,6 +49,13 @@ export interface AppBundle {
 export async function fetchRegistry(): Promise<RegistryEntry[]> {
   const res = await fetch('/api/registry')
   if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+/** Fetch private bundles from the local index (~/.amplifier/bundle-index/). */
+export async function fetchLocalRegistry(): Promise<RegistryEntry[]> {
+  const res = await fetch('/api/local-registry')
+  if (!res.ok) return []  // graceful degradation if index not seeded
   return res.json()
 }
 

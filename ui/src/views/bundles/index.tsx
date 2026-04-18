@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react'
 import {
   RegistryEntry, AppBundle,
-  fetchRegistry, listBundles, addBundle, removeBundle, toggleBundle,
+  fetchRegistry, fetchLocalRegistry, listBundles, addBundle, removeBundle, toggleBundle,
 } from '../../api/bundles'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 const TYPE_COLORS: Record<string, string> = {
-  bundle: 'bg-[#388bfd]/20 text-[#F59E0B]',
-  agent:  'bg-[#7C3F2A]/20 text-[#7C3F2A]',
-  tool:   'bg-[#3fb950]/20 text-[#56d364]',
-  module: 'bg-[#C4784A]/20 text-[#C4784A]',
+  bundle:   'bg-[#388bfd]/20 text-[#F59E0B]',
+  agent:    'bg-[#7C3F2A]/20 text-[#7C3F2A]',
+  tool:     'bg-[#3fb950]/20 text-[#56d364]',
+  module:   'bg-[#C4784A]/20 text-[#C4784A]',
+  behavior: 'bg-[#5c2d91]/20 text-[#b392f0]',
+  recipe:   'bg-[#0d419d]/20 text-[#79c0ff]',
+  package:  'bg-[#264f78]/20 text-[#79c0ff]',
 }
 
 function Stars({ rating }: { rating: number | null }) {
@@ -52,7 +55,10 @@ function BundleCard({
           <span className="text-[9px] text-[var(--text-very-muted)]">{entry.namespace}</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {entry.featured && (
+          {entry.private && (
+            <span className="text-[8px] px-1 py-0.5 rounded bg-[#30363d] text-[#8b949e]" title={entry.localPath}>🔒 private</span>
+          )}
+          {!entry.private && entry.featured && (
             <span className="text-[8px] px-1 py-0.5 rounded bg-[var(--amber-subtle)] text-[var(--amber)]">featured</span>
           )}
           <span className={`text-[9px] px-1.5 py-0.5 rounded capitalize ${TYPE_COLORS[entry.type] ?? 'bg-[var(--bg-sidebar-active)] text-[var(--text-muted)]'}`}>
@@ -122,6 +128,7 @@ function BundleCard({
 
 export default function BundlesView() {
   const [registry,  setRegistry]  = useState<RegistryEntry[]>([])
+  const [localRegistry, setLocalRegistry] = useState<RegistryEntry[]>([])
   const [installed, setInstalled] = useState<AppBundle[]>([])
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
@@ -132,8 +139,8 @@ export default function BundlesView() {
   const [error, setError]         = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([fetchRegistry(), listBundles()])
-      .then(([reg, inst]) => { setRegistry(reg); setInstalled(inst) })
+    Promise.all([fetchRegistry(), fetchLocalRegistry(), listBundles()])
+      .then(([reg, local, inst]) => { setRegistry(reg); setLocalRegistry(local); setInstalled(inst) })
       .catch((e: unknown) => {
         console.error(e)
         setError((e as Error).message ?? 'Failed to load registry')
@@ -185,21 +192,26 @@ export default function BundlesView() {
 
   // Filter registry
   const q = search.toLowerCase()
-  const filtered = registry.filter(e => {
-    if (category !== 'all' && e.category !== category) return false
+  const matchEntry = (e: RegistryEntry) => {
     if (typeFilter !== 'all' && e.type !== typeFilter) return false
     if (q) {
       return e.name.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
-        e.namespace.toLowerCase().includes(q) ||
+        (e.description ?? '').toLowerCase().includes(q) ||
+        (e.namespace ?? '').toLowerCase().includes(q) ||
         (e.tags ?? []).some(t => t.toLowerCase().includes(q))
     }
     return true
+  }
+  const filtered = registry.filter(e => {
+    if (category !== 'all' && e.category !== category) return false
+    return matchEntry(e)
   })
+  const localFiltered = localRegistry.filter(matchEntry)
 
   const featured = filtered.filter(e => e.featured && !installedIds.has(e.id))
   const rest     = filtered.filter(e => !e.featured && !installedIds.has(e.id))
-  const installedEntries = filtered.filter(e => installedIds.has(e.id))
+  const installedEntries = [...filtered, ...localFiltered].filter(e => installedIds.has(e.id))
+  const privateEntries = localFiltered.filter(e => !installedIds.has(e.id))
 
   if (error) {
     return (
@@ -376,6 +388,25 @@ export default function BundlesView() {
                     key={e.id}
                     entry={e}
                     installed={true}
+                    busy={!!busy[e.id]}
+                    onAdd={() => handleAdd(e)}
+                    onRemove={() => handleRemove(e.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Private / local */}
+          {privateEntries.length > 0 && (
+            <section>
+              <h3 className="text-[10px] text-[#8b949e] uppercase tracking-wider mb-2">🔒 Private ({privateEntries.length})</h3>
+              <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+                {privateEntries.map(e => (
+                  <BundleCard
+                    key={e.id}
+                    entry={e}
+                    installed={installedIds.has(e.id)}
                     busy={!!busy[e.id]}
                     onAdd={() => handleAdd(e)}
                     onRemove={() => handleRemove(e.id)}

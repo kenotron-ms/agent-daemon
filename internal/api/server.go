@@ -193,6 +193,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Registry + app bundle management
 	mux.HandleFunc("GET /api/registry", s.getRegistry)
+	mux.HandleFunc("GET /api/local-registry", s.getLocalRegistry)
 	mux.HandleFunc("GET /api/bundles", s.listBundles)
 	mux.HandleFunc("POST /api/bundles", s.addBundle)
 	mux.HandleFunc("DELETE /api/bundles/{id}", s.removeBundle)
