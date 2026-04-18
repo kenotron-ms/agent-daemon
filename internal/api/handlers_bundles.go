@@ -382,9 +382,19 @@ func (s *Server) getLocalRegistry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := os.ReadFile(filepath.Join(home, ".amplifier", "bundle-index", "index.json"))
-	if err != nil {
-		// Not initialised yet — return empty array, not an error.
+	// Prefer GitHub-based index (github-index.mjs) over local-filesystem index.
+	var data []byte
+	for _, rel := range []string{
+		filepath.Join(".amplifier", "github-bundle-index", "index.json"),
+		filepath.Join(".amplifier", "bundle-index", "index.json"),
+	} {
+		if b, e := os.ReadFile(filepath.Join(home, rel)); e == nil {
+			data = b
+			break
+		}
+	}
+	if data == nil {
+		// Neither index seeded yet — return empty, not an error.
 		writeJSON(w, http.StatusOK, []json.RawMessage{})
 		return
 	}
