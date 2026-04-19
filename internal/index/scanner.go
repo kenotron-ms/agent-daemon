@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -145,7 +146,35 @@ var (
 	rePyDesc     = regexp.MustCompile(`^description\s*=\s*"([^"]*)"`)
 )
 
-// ── token resolution ──────────────────────────────────────────────────────────
+// ── rate limiter ──────────────────────────────────────────────────────────────
+// rateLimiter serialises GitHub API calls so concurrent workers don't race
+// on the delay/remaining/resetAt state.
+
+type rateLimiter struct {
+	mu        sync.Mutex
+	delay     time.Duration
+	remaining int
+	resetAt   int64
+}
+
+func newRateLimiter(token string) *rateLimiter {
+	rl := &rateLimiter{remaining: 5000}
+	if token != "" {
+		rl.delay = 50 * time.Millisecond
+	} else {
+		rl.delay = 1200 * time.Millisecond
+	}
+	return rl
+}
+
+// call executes ghGet under the rate limiter lock.
+func (rl *rateLimiter) call(ctx context.Context, token, path string) ([]byte, int, error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	return ghGet(ctx, token, path, &rl.delay, &rl.remaining, &rl.resetAt)
+}
+
+// ── token resolution ────────────────────────────────────────────────────────────
 
 func resolveToken() string {
 	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
@@ -719,148 +748,196 @@ func Scan(ctx context.Context, dir string, opts ScanOptions) (*ScanResult, error
 		seenKeys[k] = true
 	}
 
+	// ── Parallel repo scan ──────────────────────────────────────────────────────
+	// Gate 1 (pushed_at) is checked without any API call — pure local state.
+	// Gate 2 + extraction require one ghGet (tree) + raw file reads per repo.
+	// Workers share a rateLimiter that serialises ghGet calls while letting
+	// raw file reads (rawFile / ExtractCapabilities) run fully concurrently.
+
+	const workers = 8
+
+	rl := newRateLimiter(token)
+
+	type repoWork struct {
+		key  string
+		repo map[string]any
+	}
+	type repoOutcome struct {
+		key     string
+		action  string // "added", "updated", "removed", "unchanged", "skip"
+		entry   *Entry
+		state   *RepoState
+		prevKey string // for "removed"
+	}
+
+	workCh := make(chan repoWork, len(reposByKey))
+	outCh  := make(chan repoOutcome, len(reposByKey))
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for w := range workCh {
+				key := w.key
+				repo := w.repo
+
+				archived, _ := repo["archived"].(bool)
+				if archived && !opts.IncludeArchived {
+					outCh <- repoOutcome{key: key, action: "skip"}
+					continue
+				}
+
+				pushedAt, _ := repo["pushed_at"].(string)
+				defaultBranch, _ := repo["default_branch"].(string)
+				if defaultBranch == "" {
+					defaultBranch = "main"
+				}
+
+				// Read cached state (safe — read-only at this point)
+				cached := st.Repos[key]
+
+				// Gate 1: pushed_at unchanged — no API call
+				if pushedAt != "" && cached.PushedAt == pushedAt && !opts.Force {
+					action := "skip"
+					if cached.AmplifierLike {
+						action = "unchanged"
+					}
+					outCh <- repoOutcome{key: key, action: action}
+					continue
+				}
+
+				// Gate 2: fetch tree (serialised through rate limiter)
+				treePath := fmt.Sprintf("repos/%s/git/trees/%s?recursive=1", key, defaultBranch)
+				treeBody, status, err := rl.call(ctx, token, treePath)
+				if err != nil {
+					outCh <- repoOutcome{key: key, action: "skip"}
+					continue
+				}
+				switch status {
+				case 409, 403, 404:
+					rs := RepoState{PushedAt: pushedAt, AmplifierLike: false}
+					outCh <- repoOutcome{key: key, action: "skip", state: &rs}
+					continue
+				}
+				if status != 200 {
+					outCh <- repoOutcome{key: key, action: "skip"}
+					continue
+				}
+
+				var treeResp struct {
+					SHA  string `json:"sha"`
+					Tree []struct {
+						Path string `json:"path"`
+					} `json:"tree"`
+				}
+				if err := json.Unmarshal(treeBody, &treeResp); err != nil {
+					outCh <- repoOutcome{key: key, action: "skip"}
+					continue
+				}
+				treeSha := treeResp.SHA
+				paths := make([]string, 0, len(treeResp.Tree))
+				for _, t := range treeResp.Tree {
+					paths = append(paths, t.Path)
+				}
+
+				// Tree SHA gate
+				if treeSha != "" && cached.TreeSha == treeSha && !opts.Force {
+					rs := RepoState{PushedAt: pushedAt, TreeSha: cached.TreeSha, AmplifierLike: cached.AmplifierLike}
+					action := "skip"
+					if cached.AmplifierLike {
+						action = "unchanged"
+					}
+					outCh <- repoOutcome{key: key, action: action, state: &rs}
+					continue
+				}
+
+				// Amplifier detection
+				isAmplifier := treeIsAmplifierLike(paths)
+				newState := &RepoState{PushedAt: pushedAt, TreeSha: treeSha, AmplifierLike: isAmplifier}
+
+				if !isAmplifier {
+					outCh <- repoOutcome{key: key, action: "removed", state: newState}
+					continue
+				}
+
+				// File reads — fully parallel, no shared state (rawFile is pure HTTP)
+				parts := strings.SplitN(key, "/", 2)
+				ownerName, repoName := parts[0], parts[1]
+				readmeText, _ := rawFile(token, ownerName, repoName, defaultBranch, "README.md")
+				caps, _ := ExtractCapabilities(token, ownerName, repoName, defaultBranch, paths, readmeText)
+
+				name, _ := repo["name"].(string)
+				desc, _ := repo["description"].(string)
+				if desc == "" {
+					desc = readmeDescription(readmeText)
+				}
+				stars, _ := repo["stargazers_count"].(float64)
+				private, _ := repo["private"].(bool)
+				topicsAny, _ := repo["topics"].([]any)
+				topics := make([]string, 0, len(topicsAny))
+				for _, t := range topicsAny {
+					if s, ok := t.(string); ok {
+						topics = append(topics, s)
+					}
+				}
+
+				entry := Entry{
+					Remote:        key,
+					Name:          name,
+					Description:   desc,
+					DefaultBranch: defaultBranch,
+					Stars:         int(stars),
+					Private:       private,
+					Topics:        topics,
+					Install:       fmt.Sprintf("amplifier bundle add git+https://github.com/%s@%s", key, defaultBranch),
+					Capabilities:  caps,
+					ScannedAt:     time.Now().UTC().Format(time.RFC3339),
+				}
+				outCh <- repoOutcome{key: key, action: "upsert", entry: &entry, state: newState}
+			}
+		}()
+	}
+
+	// Feed workers
 	for key, repo := range reposByKey {
-		archived, _ := repo["archived"].(bool)
-		if archived && !opts.IncludeArchived {
+		workCh <- repoWork{key: key, repo: repo}
+	}
+	close(workCh)
+
+	// Close output channel once all workers finish
+	go func() { wg.Wait(); close(outCh) }()
+
+	// Collect results (single goroutine — no mutex needed on idx/st/result)
+	for out := range outCh {
+		if out.state != nil {
+			st.Repos[out.key] = *out.state
+		}
+		switch out.action {
+		case "unchanged":
+			result.Unchanged++
+		case "skip":
 			result.Skipped++
-			continue
-		}
-
-		pushedAt, _ := repo["pushed_at"].(string)
-		defaultBranch, _ := repo["default_branch"].(string)
-		if defaultBranch == "" {
-			defaultBranch = "main"
-		}
-
-		cached := st.Repos[key]
-
-		// Gate 1: pushed_at unchanged
-		if pushedAt != "" && cached.PushedAt == pushedAt && !opts.Force {
-			if cached.AmplifierLike {
-				result.Unchanged++
+		case "removed":
+			if _, existed := idx.Repos[out.key]; existed {
+				result.Removed = append(result.Removed, out.key)
+				delete(idx.Repos, out.key)
 			} else {
 				result.Skipped++
 			}
-			continue
-		}
-
-		// Fetch git tree
-		treePath := fmt.Sprintf("repos/%s/git/trees/%s?recursive=1", key, defaultBranch)
-		treeBody, status, err := ghGet(ctx, token, treePath, &delay, &remaining, &resetAt)
-		if err != nil {
-			result.Skipped++
-			continue
-		}
-		switch status {
-		case 409: // empty repo
-			st.Repos[key] = RepoState{PushedAt: pushedAt, AmplifierLike: false}
-			result.Skipped++
-			continue
-		case 403, 404:
-			result.Skipped++
-			continue
-		}
-		if status != 200 {
-			result.Skipped++
-			continue
-		}
-
-		var treeResp struct {
-			SHA  string `json:"sha"`
-			Tree []struct {
-				Path string `json:"path"`
-			} `json:"tree"`
-		}
-		if err := json.Unmarshal(treeBody, &treeResp); err != nil {
-			result.Skipped++
-			continue
-		}
-		treeSha := treeResp.SHA
-		paths := make([]string, 0, len(treeResp.Tree))
-		for _, t := range treeResp.Tree {
-			paths = append(paths, t.Path)
-		}
-
-		// Gate 2: tree SHA unchanged
-		if treeSha != "" && cached.TreeSha == treeSha && !opts.Force {
-			st.Repos[key] = RepoState{
-				PushedAt:      pushedAt,
-				TreeSha:       cached.TreeSha,
-				AmplifierLike: cached.AmplifierLike,
-			}
-			if cached.AmplifierLike {
-				result.Unchanged++
+		case "upsert":
+			_, existed := idx.Repos[out.key]
+			idx.Repos[out.key] = *out.entry
+			if existed {
+				result.Updated = append(result.Updated, *out.entry)
+				if !opts.Quiet {
+					fmt.Printf("  ~ %s (updated)\n", out.key)
+				}
 			} else {
-				result.Skipped++
-			}
-			continue
-		}
-
-		// Check amplifier signatures
-		isAmplifier := treeIsAmplifierLike(paths)
-		st.Repos[key] = RepoState{
-			PushedAt:      pushedAt,
-			TreeSha:       treeSha,
-			AmplifierLike: isAmplifier,
-		}
-
-		if !isAmplifier {
-			if _, existed := idx.Repos[key]; existed {
-				result.Removed = append(result.Removed, key)
-				delete(idx.Repos, key)
-			} else {
-				result.Skipped++
-			}
-			continue
-		}
-
-		// Extract capabilities
-		parts := strings.SplitN(key, "/", 2)
-		ownerName, repoName := parts[0], parts[1]
-		readmeText, _ := rawFile(token, ownerName, repoName, defaultBranch, "README.md")
-		caps, _ := ExtractCapabilities(token, ownerName, repoName, defaultBranch, paths, readmeText)
-
-		name, _ := repo["name"].(string)
-		desc, _ := repo["description"].(string)
-		if desc == "" {
-			desc = readmeDescription(readmeText)
-		}
-		stars, _ := repo["stargazers_count"].(float64)
-		private, _ := repo["private"].(bool)
-
-		topicsAny, _ := repo["topics"].([]any)
-		topics := make([]string, 0, len(topicsAny))
-		for _, t := range topicsAny {
-			if s, ok := t.(string); ok {
-				topics = append(topics, s)
-			}
-		}
-
-		entry := Entry{
-			Remote:        key,
-			Name:          name,
-			Description:   desc,
-			DefaultBranch: defaultBranch,
-			Stars:         int(stars),
-			Private:       private,
-			Topics:        topics,
-			Install:       fmt.Sprintf("amplifier bundle add git+https://github.com/%s@%s", key, defaultBranch),
-			Capabilities:  caps,
-			ScannedAt:     time.Now().UTC().Format(time.RFC3339),
-		}
-
-		_, existed := idx.Repos[key]
-		idx.Repos[key] = entry
-
-		if existed {
-			result.Updated = append(result.Updated, entry)
-			if !opts.Quiet {
-				fmt.Printf("  ~ %s (updated)\n", key)
-			}
-		} else {
-			result.Added = append(result.Added, entry)
-			if !opts.Quiet {
-				fmt.Printf("  + %s\n", key)
+				result.Added = append(result.Added, *out.entry)
+				if !opts.Quiet {
+					fmt.Printf("  + %s\n", out.key)
+				}
 			}
 		}
 	}
