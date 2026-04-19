@@ -10,6 +10,7 @@
     #import <WebKit/WebKit.h>
 
     extern void overlayGoAction(const char *action);
+    void overlay_warmup(void);
 
     // ── Delegate ─────────────────────────────────────────────────────────────────
 
@@ -146,7 +147,13 @@
         });
     }
 
-    void overlay_hide_c(void) {
+    void overlay_warmup(void) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                overlay_ensure_created();
+            });
+        }
+
+        void overlay_hide_c(void) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!_gOverlay) return;
             NSString *js = @"setState(null)";
@@ -228,7 +235,10 @@
 
     type overlayNotifier struct{}
 
-    func (n *overlayNotifier) Setup() {} // overlay is created lazily on first show
+    func (n *overlayNotifier) Setup() {
+    	// Pre-create the panel and load HTML now so it's ready when a meeting is detected.
+    	C.overlay_warmup()
+    }
 
     func (n *overlayNotifier) MeetingDetected(app string, callback func(bool)) {
     	overlayMu.Lock()
