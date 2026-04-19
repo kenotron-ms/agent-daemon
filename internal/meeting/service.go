@@ -163,9 +163,11 @@ func (s *Service) startMonitoring(cfg Config) error {
 }
 
 func (s *Service) handleEvent(e *sh.Event) {
+	// Log every event so we can trace the real lifecycle.
+	slog.Info("meeting: event", "kind", e.Kind, "app", e.App, "path", e.Path)
+
 	switch e.Kind {
 	case sh.MeetingDetected:
-		slog.Info("meeting: detected", "app", e.App)
 		s.notify.MeetingDetected(e.App, func(record bool) {
 			if record {
 				s.mu.Lock()
@@ -178,19 +180,30 @@ func (s *Service) handleEvent(e *sh.Event) {
 		})
 
 	case sh.RecordingStarted:
-		slog.Info("meeting: recording started", "app", e.App)
 		s.mu.Lock()
 		s.recStart = time.Now()
 		s.mu.Unlock()
 		s.setState(StateRecording)
 
+	case sh.RecordingEnded:
+		// Capture stopped; WAV is being finalized on disk.
+		// Update overlay immediately — MeetingEnded may have fired 20s ago or
+		// just before this, either way recording is now over.
+		if s.State() == StateRecording {
+			if ov, ok := s.notify.(interface{ ShowSaving() }); ok {
+				ov.ShowSaving()
+			}
+			s.setState(StateMonitoring)
+		}
+
 	case sh.RecordingReady:
+		// WAV is fully written to disk. e.Path has the file.
 		s.mu.Lock()
 		dur := int(time.Since(s.recStart).Seconds())
 		cfg := s.cfg
 		s.mu.Unlock()
 
-		slog.Info("meeting: recording ready", "path", e.Path, "dur_sec", dur)
+		slog.Info("meeting: WAV ready", "path", e.Path, "dur_sec", dur)
 		s.notify.RecordingReady(e.Path, dur, func(transcribe bool) {
 			if transcribe && s.trans != nil {
 				s.setState(StateTranscribing)
@@ -199,13 +212,10 @@ func (s *Service) handleEvent(e *sh.Event) {
 			}
 		})
 
-	case sh.RecordingEnded:
-		slog.Info("meeting: recording ended", "app", e.App)
-
 	case sh.MeetingEnded:
-		slog.Info("meeting: ended", "app", e.App)
-		// If we were recording, tell the overlay so it stops showing "Recording..."
-		// RecordingReady will fire shortly with the WAV path to replace this state.
+		// Meeting window closed / mic went quiet for 20s.
+		// If still in recording state here (RecordingEnded not yet received),
+		// show saving state as a fallback.
 		if s.State() == StateRecording {
 			if ov, ok := s.notify.(interface{ ShowSaving() }); ok {
 				ov.ShowSaving()
