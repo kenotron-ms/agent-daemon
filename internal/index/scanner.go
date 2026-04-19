@@ -89,7 +89,7 @@ func extractHandles(members []madeTeamMember) []string {
 
 // resolveHandles fetches all team feeds and merges with ExtraHandles.
 // Returns deduped list of GitHub handles.
-func resolveHandles(ctx context.Context, src Sources) ([]string, error) {
+func resolveHandles(ctx context.Context, token string, src Sources) ([]string, error) {
 	seen := map[string]bool{}
 	var handles []string
 
@@ -102,7 +102,7 @@ func resolveHandles(ctx context.Context, src Sources) ([]string, error) {
 	}
 
 	for _, feed := range src.TeamFeeds {
-		body, err := httpGet(ctx, feed.URL, "")
+		body, err := httpGet(ctx, feed.URL, token)
 		if err != nil {
 			return nil, fmt.Errorf("fetching team feed %q: %w", feed.Name, err)
 		}
@@ -628,7 +628,7 @@ func Scan(ctx context.Context, dir string, opts ScanOptions) (*ScanResult, error
 	if !opts.Quiet {
 		fmt.Print("Resolving team handles... ")
 	}
-	handles, err := resolveHandles(ctx, *src)
+	handles, err := resolveHandles(ctx, token, *src)
 	if err != nil {
 		return nil, err
 	}
