@@ -55,7 +55,7 @@
                 categoryWithIdentifier:@"MEETING_DETECTED"
                 actions:@[recordAction, dismissAction]
                 intentIdentifiers:@[]
-                options:0];
+                options:UNNotificationCategoryOptionCustomDismissAction];
 
             UNNotificationAction *transcribeAction = [UNNotificationAction
                 actionWithIdentifier:@"TRANSCRIBE"
@@ -69,7 +69,7 @@
                 categoryWithIdentifier:@"RECORDING_READY"
                 actions:@[transcribeAction, laterAction]
                 intentIdentifiers:@[]
-                options:0];
+                options:UNNotificationCategoryOptionCustomDismissAction];
 
             UNNotificationAction *openAction = [UNNotificationAction
                 actionWithIdentifier:@"OPEN"
@@ -79,7 +79,7 @@
                 categoryWithIdentifier:@"TRANSCRIPT_READY"
                 actions:@[openAction]
                 intentIdentifiers:@[]
-                options:0];
+                options:UNNotificationCategoryOptionCustomDismissAction];
 
             [center setNotificationCategories:[NSSet setWithObjects:detectCat, readyCat, doneCat, nil]];
             [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
@@ -93,14 +93,15 @@
         NSString *nsID    = [NSString stringWithUTF8String:identifier];
         NSString *nsTitle = [NSString stringWithUTF8String:title];
         NSString *nsBody  = [NSString stringWithUTF8String:body];
+        NSString *nsCat   = categoryID ? [NSString stringWithUTF8String:categoryID] : nil;
 
         dispatch_async(dispatch_get_main_queue(), ^{
             UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
             content.title = nsTitle;
             content.body  = nsBody;
             content.sound = UNNotificationSound.defaultSound;
-            if (categoryID) {
-                content.categoryIdentifier = [NSString stringWithUTF8String:categoryID];
+            if (nsCat) {
+                content.categoryIdentifier = nsCat;
             }
             UNNotificationRequest *req = [UNNotificationRequest
                 requestWithIdentifier:nsID
@@ -117,7 +118,8 @@
     void meeting_notif_open_file(const char *pathCStr) {
         NSString *path = [NSString stringWithUTF8String:pathCStr];
         dispatch_async(dispatch_get_main_queue(), ^{
-            [[NSWorkspace sharedWorkspace] openFile:path];
+            NSURL *url = [NSURL fileURLWithPath:path];
+            [[NSWorkspace sharedWorkspace] openURL:url];
         });
     }
     */
