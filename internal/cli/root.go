@@ -56,5 +56,6 @@ func init() {
 		mirrorCmd,     // mirror subcommands: entities, get, changes, connectors
 		connectorCmd,  // connector subcommands: add, list, remove
 		bundleCmd,     // bundle subcommands: install, add, list, remove
+		indexCmd,      // index subcommands: scan, list, status, watch, unwatch
 	)
 }
