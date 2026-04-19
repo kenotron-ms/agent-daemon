@@ -67,9 +67,14 @@
     ".sec{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.72)}"
     "</style></head><body>"
     "<div id='card'>"
-    "<div class='row'><div class='dot' id='dot'></div>"
+    "<div class='row'>"
+    "<div class='dot' id='dot'></div>"
     "<div class='txt'><div class='t' id='ti'></div><div class='s' id='su'></div></div>"
-    "<div class='timer' id='tm'></div></div>"
+    "<div class='timer' id='tm'></div>"
+    "<button onclick=\"s('dismiss')\" style='flex:none;background:rgba(255,255,255,0.08);border:none;"
+    "border-radius:50%;width:20px;height:20px;color:rgba(255,255,255,0.4);cursor:pointer;"
+    "font-size:11px;display:flex;align-items:center;justify-content:center;padding:0'>✕</button>"
+    "</div>"
     "<div class='btns' id='bt'></div></div>"
     "<script>"
     "var iv=null,sec=0;"
@@ -290,6 +295,16 @@
     		Title: "Transcribing\u2026",
     		Sub:   "This usually takes under a minute",
     		Dot:   "blue",
+    	})
+    }
+
+    // ShowSaving is called when RecordingEnded fires — bridges the gap
+    // between the meeting ending and RecordingReady arriving with the WAV path.
+    func (n *overlayNotifier) ShowSaving() {
+    	showOverlay(overlayState{
+    		Title: "Saving recording…",
+    		Sub:   "This only takes a moment",
+    		Dot:   "yellow",
     	})
     }
 
