@@ -87,6 +87,14 @@ func extractHandles(members []madeTeamMember) []string {
 	return out
 }
 
+// stripTrailingCommas removes trailing commas before ] or } to handle
+// relaxed JSON files (e.g. those edited by humans without strict JSON linting).
+func stripTrailingCommas(data []byte) []byte {
+	// Replace ,<whitespace>} and ,<whitespace>] patterns
+	result := trailingCommaRe.ReplaceAll(data, []byte(""))
+	return result
+}
+
 // resolveHandles fetches all team feeds and merges with ExtraHandles.
 // Returns deduped list of GitHub handles.
 func resolveHandles(ctx context.Context, token string, src Sources) ([]string, error) {
@@ -106,8 +114,10 @@ func resolveHandles(ctx context.Context, token string, src Sources) ([]string, e
 		if err != nil {
 			return nil, fmt.Errorf("fetching team feed %q: %w", feed.Name, err)
 		}
+		body = stripTrailingCommas(body)
 		var team madeTeamJSON
-		if err := json.Unmarshal(body, &team); err != nil {
+		decoder := json.NewDecoder(strings.NewReader(string(body)))
+		if err := decoder.Decode(&team); err != nil {
 			return nil, fmt.Errorf("parsing team feed %q: %w", feed.Name, err)
 		}
 		for _, h := range extractHandles(team.TeamMembers) {
@@ -125,6 +135,7 @@ func resolveHandles(ctx context.Context, token string, src Sources) ([]string, e
 // ── compiled regexps ──────────────────────────────────────────────────────────
 
 var (
+	trailingCommaRe = regexp.MustCompile(`,\s*([}\]])`)
 	reBehaviors  = regexp.MustCompile(`^behaviors/([^/]+)\.yaml$`)
 	reAgents     = regexp.MustCompile(`^agents/([^/]+)\.md$`)
 	reRecipes    = regexp.MustCompile(`^recipes/([^/]+)\.yaml$`)
