@@ -298,6 +298,16 @@
     	})
     }
 
+    // ShowError surfaces a side-huddle error in the overlay and auto-dismisses.
+    func (n *overlayNotifier) ShowError(msg string) {
+    	showOverlay(overlayState{
+    		Title:   "Recording failed",
+    		Sub:     msg,
+    		Dot:     "red",
+    		Buttons: []overlayButton{{Label: "Dismiss", Action: "dismiss"}},
+    	})
+    }
+
     // ShowSaving is called when RecordingEnded fires — bridges the gap
     // between the meeting ending and RecordingReady arriving with the WAV path.
     func (n *overlayNotifier) ShowSaving() {

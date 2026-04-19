@@ -227,6 +227,11 @@ func (s *Service) handleEvent(e *sh.Event) {
 
 	case sh.Error:
 		slog.Error("meeting: side-huddle error", "msg", e.Message)
+		// Surface the error in the overlay so it doesn't get stuck.
+		if ov, ok := s.notify.(interface{ ShowError(string) }); ok {
+			ov.ShowError(e.Message)
+		}
+		s.setState(StateMonitoring)
 	}
 }
 
