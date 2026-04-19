@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	sh "github.com/kenotron-ms/side-huddle/bindings/go"
+
 	"github.com/ms/amplifier-app-loom/internal/meeting"
 )
 
@@ -110,5 +112,58 @@ func TestService_SetEnabled_Toggles(t *testing.T) {
 	}
 	if svc.State() != meeting.StateIdle {
 		t.Errorf("expected idle after disable, got %v", svc.State())
+	}
+}
+
+func TestService_HandleEvent_MeetingDetected(t *testing.T) {
+	db := openTestDB(t)
+	store := meeting.NewConfigStore(db)
+	dir := t.TempDir()
+	store.Set(context.Background(), meeting.Config{Enabled: true, OutputDir: dir, Model: "whisper-1"})
+
+	notif := &fakeNotifier{}
+	svc := meeting.NewService(store, notif, nil)
+	svc.SetListenerFactory(meeting.NoOpListenerFactory)
+	svc.Start(context.Background())
+	defer svc.Stop()
+
+	// Simulate a MeetingDetected event
+	svc.HandleEventForTest(&sh.Event{Kind: sh.MeetingDetected, App: "Teams"})
+
+	// Notifier should have been called with the app name
+	notif.mu.Lock()
+	detected := notif.detected
+	notif.mu.Unlock()
+
+	if len(detected) != 1 || detected[0] != "Teams" {
+		t.Errorf("expected MeetingDetected for Teams, got %v", detected)
+	}
+}
+
+func TestService_HandleEvent_RecordingReady_Transcribes(t *testing.T) {
+	db := openTestDB(t)
+	store := meeting.NewConfigStore(db)
+	dir := t.TempDir()
+	store.Set(context.Background(), meeting.Config{Enabled: true, OutputDir: dir, Model: "whisper-1"})
+
+	notif := &fakeNotifier{}
+	svc := meeting.NewService(store, notif, nil) // nil trans = skips actual transcription
+	svc.SetListenerFactory(meeting.NoOpListenerFactory)
+	svc.Start(context.Background())
+	defer svc.Stop()
+
+	// Simulate RecordingReady event
+	wavPath := filepath.Join(dir, "recordings", "test.wav")
+	svc.HandleEventForTest(&sh.Event{Kind: sh.RecordingReady, App: "Teams", Path: wavPath})
+
+	// Give the async callback a moment
+	time.Sleep(20 * time.Millisecond)
+
+	// RecordingReady callback should have been registered
+	notif.mu.Lock()
+	cb := notif.readyCB
+	notif.mu.Unlock()
+	if cb == nil {
+		t.Error("expected RecordingReady callback to be set")
 	}
 }

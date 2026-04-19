@@ -56,12 +56,6 @@ func defaultListenerFactory(outputDir string) (*sh.Listener, error) {
 	return l, nil
 }
 
-// NoOpListenerFactory returns a nil listener so monitoring state is entered
-// without real CoreAudio permission requirements. Used in tests.
-func NoOpListenerFactory(outputDir string) (*sh.Listener, error) {
-	return nil, nil
-}
-
 // Service detects meetings, records audio, and triggers transcription.
 type Service struct {
 	store  *ConfigStore
