@@ -184,7 +184,11 @@ func onReady(port int) {
 			mUpdateAvail.Show()
 		case updater.StateReady:
 			mUpdateAvail.SetTitle(fmt.Sprintf("↻  Restart to apply v%s", ver))
-			mUpdateAvail.SetTooltip("Click to stop the service, swap binary, reinstall, and re-launch")
+			if runtime.GOOS == "darwin" {
+				mUpdateAvail.SetTooltip("Click to install Loom.app to /Applications and relaunch")
+			} else {
+				mUpdateAvail.SetTooltip("Click to stop the service, swap binary, reinstall, and re-launch")
+			}
 			mUpdateAvail.Enable()
 			mUpdateAvail.Show()
 		case updater.StateApplying:
@@ -275,19 +279,34 @@ func onReady(port int) {
 			switch u.State() {
 			case updater.StateReady:
 				go func() {
-					newExe, err := u.Apply()
-					if err != nil {
-						slog.Error("tray: auto-update apply failed", "err", err)
-						return
-					}
-					cmd := exec.Command(newExe, "tray")
-					if err := cmd.Start(); err != nil {
-						slog.Error("tray: relaunch failed", "path", newExe, "err", err)
+					// Kill daemon + any other loom instances. KillAllLoomProcesses
+					// skips our own PID so this tray stays live through the install.
+					updater.KillAllLoomProcesses()
+
+					if runtime.GOOS == "darwin" {
+						// macOS: mount DMG → install Loom.app → relaunch via open.
+						if err := u.ApplyDMG(); err != nil {
+							slog.Error("tray: DMG update apply failed", "err", err)
+							return
+						}
+						systray.Quit()
+						_ = exec.Command("open", "-a", "Loom").Start()
 					} else {
-						slog.Info("tray: relaunched new tray", "pid", cmd.Process.Pid)
-						_ = cmd.Process.Release()
+						// Linux / Windows: atomic binary swap + service reinstall.
+						newExe, err := u.Apply()
+						if err != nil {
+							slog.Error("tray: auto-update apply failed", "err", err)
+							return
+						}
+						cmd := exec.Command(newExe, "tray")
+						if err := cmd.Start(); err != nil {
+							slog.Error("tray: relaunch failed", "path", newExe, "err", err)
+						} else {
+							slog.Info("tray: relaunched new tray", "pid", cmd.Process.Pid)
+							_ = cmd.Process.Release()
+						}
+						systray.Quit()
 					}
-					systray.Quit()
 				}()
 			case updater.StateFailed:
 				go func() { _ = u.CheckAndStage(context.Background()) }()

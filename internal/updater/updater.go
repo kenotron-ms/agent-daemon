@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -154,7 +156,15 @@ func (u *Updater) CheckAndStage(ctx context.Context) error {
 		}
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
-	stagingPath := exePath + ".tmp"
+
+	// On macOS we download a DMG; use a well-known temp path instead of
+	// placing a .tmp next to the CLI binary.
+	var stagingPath string
+	if runtime.GOOS == "darwin" {
+		stagingPath = filepath.Join(os.TempDir(), "loom-update.dmg")
+	} else {
+		stagingPath = exePath + ".tmp"
+	}
 
 	if err := downloadAndVerify(ctx, downloadURL, checksumURL, stagingPath); err != nil {
 		_ = os.Remove(stagingPath) // clean up partial download
@@ -307,6 +317,98 @@ func CleanupOldBinary() {
 	}
 }
 
+// KillAllLoomProcesses stops the managed service and sends SIGKILL to every
+// loom process except the caller's own PID. On macOS this covers both the
+// launchd-managed daemon and any running tray instance.
+func KillAllLoomProcesses() {
+	selfPID := os.Getpid()
+
+	// Stop and uninstall the service so the service manager doesn't restart it.
+	if level, err := internalsvc.DetectInstallLevel(); err == nil {
+		if svc, err := internalsvc.NewServiceForControl(level); err == nil {
+			_ = kservice.Control(svc, "stop")
+			_ = kservice.Control(svc, "uninstall")
+		}
+	}
+
+	// Brief pause to let the service shut down gracefully.
+	time.Sleep(500 * time.Millisecond)
+
+	// Find all processes whose name is exactly "loom".
+	out, err := exec.Command("pgrep", "-x", "loom").Output()
+	if err != nil {
+		return // no matching processes or pgrep unavailable
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil || pid <= 0 || pid == selfPID {
+			continue
+		}
+		slog.Info("updater: killing loom process", "pid", pid)
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	}
+
+	// Brief pause to let killed processes fully exit.
+	time.Sleep(300 * time.Millisecond)
+}
+
+// ApplyDMG installs the staged macOS DMG into /Applications.
+//
+// Flow: mount DMG → remove existing Loom.app → ditto new app → detach DMG.
+// The staging DMG is removed on completion (success or failure).
+// Call this on darwin after CheckAndStage reaches StateReady.
+func (u *Updater) ApplyDMG() error {
+	u.mu.Lock()
+	if u.state != StateReady {
+		s := u.state
+		u.mu.Unlock()
+		return fmt.Errorf("update not staged (current state: %s)", s)
+	}
+	stagingPath := u.stagingPath
+	u.state = StateApplying
+	u.mu.Unlock()
+	if u.onChange != nil {
+		u.onChange(StateApplying, u.latestVer)
+	}
+
+	const mountPoint = "/Volumes/LoomUpdate"
+	const appDest = "/Applications/Loom.app"
+	appSrc := mountPoint + "/Loom.app"
+
+	// Always detach and clean up when done, regardless of success/failure.
+	defer func() {
+		_ = exec.Command("hdiutil", "detach", mountPoint, "-quiet", "-force").Run()
+		_ = os.Remove(stagingPath)
+	}()
+
+	// Mount the DMG at a fixed, predictable mount point.
+	slog.Info("updater: mounting DMG", "path", stagingPath, "mountPoint", mountPoint)
+	if out, err := exec.Command(
+		"hdiutil", "attach",
+		"-mountpoint", mountPoint,
+		"-nobrowse", // don't show in Finder
+		"-quiet",
+		stagingPath,
+	).CombinedOutput(); err != nil {
+		return u.fail(fmt.Errorf("mount DMG: %w\noutput: %s", err, out))
+	}
+
+	// Remove the existing app bundle so ditto gets a clean destination.
+	if err := os.RemoveAll(appDest); err != nil && !os.IsNotExist(err) {
+		slog.Warn("updater: could not remove existing Loom.app", "err", err)
+	}
+
+	// ditto preserves macOS metadata and resource forks correctly.
+	slog.Info("updater: installing Loom.app", "src", appSrc, "dest", appDest)
+	if out, err := exec.Command("ditto", appSrc, appDest).CombinedOutput(); err != nil {
+		return u.fail(fmt.Errorf("install Loom.app: %w\noutput: %s", err, out))
+	}
+
+	slog.Info("updater: DMG apply complete", "version", u.latestVer, "dest", appDest)
+	return nil
+}
+
 // reExec replaces the current process with exePath running subcommand.
 // On Unix, uses syscall.Exec (same PID — never returns on success).
 // On Windows, spawns a new process then exits.
@@ -378,9 +480,15 @@ func latestRelease(ctx context.Context) (version, downloadURL, checksumURL strin
 
 	version = strings.TrimPrefix(rel.TagName, "v")
 
-	wantBinary := fmt.Sprintf("loom-%s-%s", runtime.GOOS, runtime.GOARCH)
-	if runtime.GOOS == "windows" {
-		wantBinary += ".exe"
+	// On macOS, prefer the signed & notarized DMG over the raw binary.
+	var wantBinary string
+	if runtime.GOOS == "darwin" {
+		wantBinary = fmt.Sprintf("loom-darwin-%s.dmg", runtime.GOARCH)
+	} else {
+		wantBinary = fmt.Sprintf("loom-%s-%s", runtime.GOOS, runtime.GOARCH)
+		if runtime.GOOS == "windows" {
+			wantBinary += ".exe"
+		}
 	}
 
 	for _, a := range rel.Assets {
@@ -460,10 +568,16 @@ func fetchExpectedChecksum(ctx context.Context, checksumURL string) (string, err
 		return "", err
 	}
 
-	// Format: "<sha256>  loom-<os>-<arch>[.exe]"
-	wantFilename := fmt.Sprintf("loom-%s-%s", runtime.GOOS, runtime.GOARCH)
-	if runtime.GOOS == "windows" {
-		wantFilename += ".exe"
+	// Format: "<sha256>  loom-<os>-<arch>[.dmg|.exe]"
+	// On darwin, we download the DMG so we must match against the .dmg filename.
+	var wantFilename string
+	if runtime.GOOS == "darwin" {
+		wantFilename = fmt.Sprintf("loom-darwin-%s.dmg", runtime.GOARCH)
+	} else {
+		wantFilename = fmt.Sprintf("loom-%s-%s", runtime.GOOS, runtime.GOARCH)
+		if runtime.GOOS == "windows" {
+			wantFilename += ".exe"
+		}
 	}
 
 	for _, line := range strings.Split(string(body), "\n") {
