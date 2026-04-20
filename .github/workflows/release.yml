@@ -23,13 +23,6 @@ jobs:
             cgo: "1"
             asset: loom-darwin-arm64
 
-          - name: darwin-amd64
-            os: macos-15-intel
-            goos: darwin
-            goarch: amd64
-            cgo: "1"
-            asset: loom-darwin-amd64
-
           # Linux — CGO enabled on native amd64, disabled for arm64 cross-compile
           - name: linux-amd64
             os: ubuntu-latest
@@ -110,8 +103,6 @@ jobs:
         include:
           - arch: arm64
             asset: loom-darwin-arm64
-          - arch: amd64
-            asset: loom-darwin-amd64
     steps:
       - uses: actions/checkout@v6
 
@@ -159,7 +150,7 @@ jobs:
       - name: Make binaries executable
         run: |
           chmod +x dist/loom-linux-amd64 dist/loom-linux-arm64
-          chmod +x dist/loom-darwin-arm64 dist/loom-darwin-amd64
+          chmod +x dist/loom-darwin-arm64
 
       - name: Generate checksums
         working-directory: dist
@@ -196,9 +187,7 @@ jobs:
             - Configure your AI provider (Anthropic / OpenAI) from the Settings tab in the UI
           files: |
             dist/loom-darwin-arm64
-            dist/loom-darwin-amd64
             dist/loom-darwin-arm64.dmg
-            dist/loom-darwin-amd64.dmg
             dist/loom-linux-amd64
             dist/loom-linux-arm64
             dist/loom-windows-amd64.exe

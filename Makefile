@@ -1,7 +1,7 @@
 BINARY   = loom
 DIST     = dist
 MODULE   = github.com/ms/amplifier-app-loom
-VERSION  = 0.9.4
+VERSION  ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0-dev")
 LDFLAGS  = -ldflags "-X $(MODULE)/internal/api.Version=$(VERSION) -s -w"
 
 .PHONY: build run install-svc uninstall-svc test clean cross ui release dev dev-go dev-ui app app-sync
@@ -97,8 +97,9 @@ cross: ui $(DIST)
 
 # Cut a full release: cross-compile → checksums → git tag → GitHub Release
 # Usage: make release VERSION=1.2.3
+# After releasing, local builds automatically pick up the new version from git tags.
 release: cross
-	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=x.y.z"; exit 1; fi
+	@if [ -z "$(VERSION)" ] || [ "$(VERSION)" = "0.0.0-dev" ]; then echo "Error: no git tag found. Usage: make release VERSION=x.y.z"; exit 1; fi
 	@echo "--- Generating checksums ---"
 	cd $(DIST) && shasum -a 256 \
 		$(BINARY)-linux-amd64 \
