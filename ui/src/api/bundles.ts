@@ -32,6 +32,15 @@ export interface RegistryEntry {
     version: string | null
     sourceFile: string
   }>
+  // Fork info (from github-bundle-index scanner)
+  fork?: boolean
+  parent?: string        // "org/repo" of upstream
+  // Richer metadata (from github-bundle-index scanner)
+  language?: string
+  license?: string
+  updatedAt?: string
+  forkCount?: number
+  openIssues?: number
 }
 
 // ── Installed bundle types (loom config) ─────────────────────────────────────

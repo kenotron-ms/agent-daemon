@@ -438,7 +438,9 @@ type localCapability struct {
 	Inferred    bool    `json:"inferred,omitempty"`
 }
 
-// localRepoEntry mirrors repos{} values from local-index.mjs index.json.
+// localRepoEntry mirrors repos{} values from both local-index.mjs and the Go
+// github-bundle-index scanner (internal/index).  Fields present only in one
+// source are silently zero-valued when reading the other format.
 type localRepoEntry struct {
 	RepoPath     string            `json:"repoPath"`
 	Name         string            `json:"name"`
@@ -446,6 +448,17 @@ type localRepoEntry struct {
 	SHA          string            `json:"sha"`
 	ScannedAt    string            `json:"scannedAt"`
 	Capabilities []localCapability `json:"capabilities"`
+	// Additional fields written by the Go github-bundle-index scanner
+	Description string `json:"description,omitempty"`
+	Stars       int    `json:"stars,omitempty"`
+	Private     bool   `json:"private,omitempty"`
+	Fork        bool   `json:"fork,omitempty"`
+	Parent      string `json:"parent,omitempty"`
+	Language    string `json:"language,omitempty"`
+	License     string `json:"license,omitempty"`
+	UpdatedAt   string `json:"updatedAt,omitempty"`
+	ForkCount   int    `json:"forkCount,omitempty"`
+	OpenIssues  int    `json:"openIssues,omitempty"`
 }
 
 // localIndexFile mirrors the top-level local-index.mjs index.json.
@@ -494,14 +507,22 @@ func localRepoToEntry(repo localRepoEntry) json.RawMessage {
 		id = filepath.Base(repo.RepoPath)
 	}
 
-	description := ""
-	if primary.Description != nil {
+	// Prefer description from the index record; fall back to capability description.
+	description := repo.Description
+	if description == "" && primary.Description != nil {
 		description = *primary.Description
 	}
 
-	lastUpdated := ""
-	if len(repo.ScannedAt) >= 10 {
+	lastUpdated := repo.UpdatedAt
+	if lastUpdated == "" && len(repo.ScannedAt) >= 10 {
 		lastUpdated = repo.ScannedAt[:10]
+	}
+
+	// local filesystem repos are always private; GitHub-scanned repos use the
+	// value written by the scanner.
+	private := true
+	if repo.Remote != "" {
+		private = repo.Private
 	}
 
 	entry := map[string]any{
@@ -518,9 +539,16 @@ func localRepoToEntry(repo localRepoEntry) json.RawMessage {
 		"tags":         []string{},
 		"featured":     false,
 		"lastUpdated":  lastUpdated,
-		"private":      true,
+		"private":      private,
 		"localPath":    repo.RepoPath,
 		"capabilities": repo.Capabilities,
+		"stars":        repo.Stars,
+		"fork":         repo.Fork,
+		"parent":       repo.Parent,
+		"language":     repo.Language,
+		"license":      repo.License,
+		"forkCount":    repo.ForkCount,
+		"openIssues":   repo.OpenIssues,
 	}
 
 	b, err := json.Marshal(entry)

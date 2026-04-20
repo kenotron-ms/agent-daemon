@@ -22,6 +22,15 @@ type Entry struct {
 	Install       string       `json:"install"`
 	Capabilities  []Capability `json:"capabilities"`
 	ScannedAt     string       `json:"scannedAt"`
+	// Fork info
+	Fork   bool   `json:"fork,omitempty"`
+	Parent string `json:"parent,omitempty"` // "org/repo" of upstream
+	// Richer metadata
+	Language   string `json:"language,omitempty"`
+	License    string `json:"license,omitempty"`
+	UpdatedAt  string `json:"updatedAt,omitempty"`
+	ForkCount  int    `json:"forkCount,omitempty"`
+	OpenIssues int    `json:"openIssues,omitempty"`
 }
 
 // IndexFile is the on-disk format for index.json.

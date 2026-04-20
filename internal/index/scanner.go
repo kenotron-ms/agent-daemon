@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -50,6 +51,12 @@ type Sources struct {
 
 	// Additional specific repos to always scan (org/repo format).
 	ExtraRepos []string `json:"extra_repos"`
+
+	// Additional GitHub organisations whose public repos should be scanned.
+	ExtraOrgs []string `json:"extra_orgs,omitempty"`
+
+	// GitHub search queries (e.g. "topic:amplifier-bundle") to scan.
+	SearchQueries []string `json:"search_queries,omitempty"`
 }
 
 type TeamFeed struct {
@@ -168,7 +175,17 @@ func newRateLimiter(token string) *rateLimiter {
 }
 
 // call executes ghGet under the rate limiter lock.
+// The Link pagination header is discarded; use callWithLink when pagination is needed.
 func (rl *rateLimiter) call(ctx context.Context, token, path string) ([]byte, int, error) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	body, status, _, err := ghGet(ctx, token, path, &rl.delay, &rl.remaining, &rl.resetAt)
+	return body, status, err
+}
+
+// callWithLink executes ghGet under the rate limiter lock and also returns the
+// raw Link response header so callers can follow pagination.
+func (rl *rateLimiter) callWithLink(ctx context.Context, token, path string) ([]byte, int, string, error) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 	return ghGet(ctx, token, path, &rl.delay, &rl.remaining, &rl.resetAt)
@@ -213,20 +230,21 @@ func httpGet(ctx context.Context, url, token string) ([]byte, error) {
 
 // ghGet makes a rate-aware GET to the GitHub API.
 // Updates *delay/*remaining/*resetAt from response headers.
-// Returns (nil, 304, nil) for 304 Not Modified.
-func ghGet(ctx context.Context, token, path string, delay *time.Duration, remaining *int, resetAt *int64) ([]byte, int, error) {
+// Returns (nil, 304, "", nil) for 304 Not Modified.
+// The third return value is the raw Link response header (for pagination).
+func ghGet(ctx context.Context, token, path string, delay *time.Duration, remaining *int, resetAt *int64) ([]byte, int, string, error) {
 	if *delay > 0 {
 		select {
 		case <-ctx.Done():
-			return nil, 0, ctx.Err()
+			return nil, 0, "", ctx.Err()
 		case <-time.After(*delay):
 		}
 	}
 
-	url := "https://api.github.com/" + strings.TrimPrefix(path, "/")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	apiURL := "https://api.github.com/" + strings.TrimPrefix(path, "/")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
@@ -236,9 +254,11 @@ func ghGet(ctx context.Context, token, path string, delay *time.Duration, remain
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 	defer resp.Body.Close()
+
+	linkHeader := resp.Header.Get("Link")
 
 	if rem := resp.Header.Get("X-RateLimit-Remaining"); rem != "" {
 		if v, e := strconv.Atoi(rem); e == nil {
@@ -271,14 +291,14 @@ func ghGet(ctx context.Context, token, path string, delay *time.Duration, remain
 	}
 
 	if resp.StatusCode == http.StatusNotModified {
-		return nil, 304, nil
+		return nil, 304, linkHeader, nil
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, resp.StatusCode, err
+		return nil, resp.StatusCode, linkHeader, err
 	}
-	return body, resp.StatusCode, nil
+	return body, resp.StatusCode, linkHeader, nil
 }
 
 // rawFile fetches a file via raw.githubusercontent.com.
@@ -325,25 +345,16 @@ func parseNextLink(header string) string {
 }
 
 // listReposByHandle returns all repos for a given GitHub handle,
-// following pagination.
+// following pagination via Link headers.
 func listReposByHandle(ctx context.Context, token, handle string, rl *rateLimiter) ([]map[string]any, error) {
 	var all []map[string]any
 
-	nextURL := fmt.Sprintf("user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member&type=all")
-	// For other users' handles (not self), use /users/{handle}/repos
-	// We always use /user/repos for our own handle since it includes private repos.
-	// The caller will filter by handle's repos using the owner field.
-	_ = handle // handled below via owner filter
-
-	// Actually, the right call for "repos a specific person owns/contributes to":
-	// /users/{handle}/repos gives public repos only.
-	// /user/repos with affiliation gives everything you have access to, filtered by owner.
-	// We use /user/repos and filter by owner == handle for private repos of your own,
-	// plus /users/{handle}/repos for other team members' public repos.
-	nextURL = fmt.Sprintf("users/%s/repos?per_page=100&sort=pushed&type=owner", handle)
+	// /users/{handle}/repos returns public repos for the given handle.
+	// Pagination is followed via the Link response header.
+	nextURL := fmt.Sprintf("users/%s/repos?per_page=100&sort=pushed&type=owner", handle)
 
 	for nextURL != "" {
-		body, status, err := rl.call(ctx, token, nextURL)
+		body, status, link, err := rl.callWithLink(ctx, token, nextURL)
 		if err != nil {
 			return nil, err
 		}
@@ -359,11 +370,7 @@ func listReposByHandle(ctx context.Context, token, handle string, rl *rateLimite
 			return nil, err
 		}
 		all = append(all, page...)
-
-		// We'd need the Link header, but ghGet doesn't return it.
-		// For now, 100 repos per handle is sufficient for most team members.
-		// TODO: thread Link header through ghGet if needed.
-		break
+		nextURL = parseNextLink(link)
 	}
 	return all, nil
 }
@@ -434,14 +441,14 @@ func fetchEventsSince(ctx context.Context, token, handle string, since time.Time
 	return eventsResult{repos: repos, overflow: overflow}, nil
 }
 
-// listOwnRepos returns all repos the authenticated user can access (including private).
-// Used only for ExtraHandles that match the token owner.
+// listOwnRepos returns all repos the authenticated user can access (including private),
+// following pagination via Link headers.
 func listOwnRepos(ctx context.Context, token string, rl *rateLimiter) ([]map[string]any, error) {
 	var all []map[string]any
 	nextPath := "user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member"
 
 	for nextPath != "" {
-		body, status, err := rl.call(ctx, token, nextPath)
+		body, status, link, err := rl.callWithLink(ctx, token, nextPath)
 		if err != nil {
 			return nil, err
 		}
@@ -454,9 +461,76 @@ func listOwnRepos(ctx context.Context, token string, rl *rateLimiter) ([]map[str
 			return nil, err
 		}
 		all = append(all, page...)
-		break // one page is enough for now (100 most-recently-pushed)
+		nextPath = parseNextLink(link)
 	}
 	return all, nil
+}
+
+// scanOrg returns all public repos for a GitHub organisation, following pagination.
+func scanOrg(ctx context.Context, org, token string, rl *rateLimiter) ([]map[string]any, error) {
+	var repos []map[string]any
+	nextURL := fmt.Sprintf("orgs/%s/repos?type=public&per_page=100&sort=pushed", org)
+	for nextURL != "" {
+		body, status, link, err := rl.callWithLink(ctx, token, nextURL)
+		if err != nil {
+			return repos, err
+		}
+		if status == 404 {
+			return repos, nil // org doesn't exist
+		}
+		if status != 200 {
+			return repos, fmt.Errorf("HTTP %d listing org %s repos", status, org)
+		}
+		var page []map[string]any
+		if err := json.Unmarshal(body, &page); err != nil {
+			return repos, err
+		}
+		repos = append(repos, page...)
+		nextURL = parseNextLink(link)
+	}
+	return repos, nil
+}
+
+// scanSearch returns repos matching a GitHub search query, following pagination.
+// The search API wraps results in {"total_count": N, "items": [...]}.
+func scanSearch(ctx context.Context, query, token string, rl *rateLimiter) ([]map[string]any, error) {
+	var repos []map[string]any
+	nextURL := fmt.Sprintf("search/repositories?q=%s&per_page=100&sort=stars",
+		neturl.QueryEscape(query))
+	for nextURL != "" {
+		body, status, link, err := rl.callWithLink(ctx, token, nextURL)
+		if err != nil {
+			return repos, err
+		}
+		if status != 200 {
+			return repos, fmt.Errorf("HTTP %d searching repositories: %q", status, query)
+		}
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return repos, err
+		}
+		repos = append(repos, result.Items...)
+		nextURL = parseNextLink(link)
+	}
+	return repos, nil
+}
+
+// fetchRepoDetail fetches the full metadata for a single repo (includes "parent" for forks).
+func fetchRepoDetail(ctx context.Context, key, token string, rl *rateLimiter) (map[string]any, error) {
+	body, status, err := rl.call(ctx, token, "repos/"+key)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("HTTP %d fetching repo detail for %s", status, key)
+	}
+	var r map[string]any
+	if err := json.Unmarshal(body, &r); err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // ── amplifier detection ───────────────────────────────────────────────────────
@@ -704,7 +778,8 @@ func Scan(ctx context.Context, dir string, opts ScanOptions) (*ScanResult, error
 	if err != nil {
 		return nil, fmt.Errorf("loading sources: %w", err)
 	}
-	if len(src.TeamFeeds) == 0 && len(src.ExtraHandles) == 0 && len(src.ExtraRepos) == 0 {
+	if len(src.TeamFeeds) == 0 && len(src.ExtraHandles) == 0 && len(src.ExtraRepos) == 0 &&
+		len(src.ExtraOrgs) == 0 && len(src.SearchQueries) == 0 {
 		return nil, fmt.Errorf(
 			"no sources configured — run: loom index init\n" +
 				"  (creates ~/.amplifier/bundle-index/sources.json)")
@@ -880,6 +955,37 @@ func Scan(ctx context.Context, dir string, opts ScanOptions) (*ScanResult, error
 					}
 				}
 
+				// Richer metadata fields
+				fork, _ := repo["fork"].(bool)
+				forkCount, _ := repo["forks_count"].(float64)
+				openIssues, _ := repo["open_issues_count"].(float64)
+				language, _ := repo["language"].(string)
+				updatedAt, _ := repo["updated_at"].(string)
+
+				var license string
+				if lic, ok := repo["license"].(map[string]any); ok {
+					if spdx, _ := lic["spdx_id"].(string); spdx != "" && spdx != "NOASSERTION" {
+						license = spdx
+					}
+				}
+
+				// parent is only in the detail response, not in list/search results.
+				// Try extracting from an already-fetched detail response first, then
+				// make one extra API call for fork repos when parent is still unknown.
+				var parent string
+				if fork {
+					if p, ok := repo["parent"].(map[string]any); ok {
+						parent, _ = p["full_name"].(string)
+					}
+					if parent == "" {
+						if detail, err := fetchRepoDetail(ctx, key, token, rl); err == nil {
+							if p, ok := detail["parent"].(map[string]any); ok {
+								parent, _ = p["full_name"].(string)
+							}
+						}
+					}
+				}
+
 				entry := Entry{
 					Remote:        key,
 					Name:          name,
@@ -891,6 +997,13 @@ func Scan(ctx context.Context, dir string, opts ScanOptions) (*ScanResult, error
 					Install:       fmt.Sprintf("amplifier bundle add git+https://github.com/%s@%s", key, defaultBranch),
 					Capabilities:  caps,
 					ScannedAt:     time.Now().UTC().Format(time.RFC3339),
+					Fork:          fork,
+					Parent:        parent,
+					Language:      language,
+					License:       license,
+					UpdatedAt:     updatedAt,
+					ForkCount:     int(forkCount),
+					OpenIssues:    int(openIssues),
 				}
 				outCh <- repoOutcome{key: key, action: "upsert", entry: &entry, state: newState}
 			}
@@ -1037,6 +1150,46 @@ func Scan(ctx context.Context, dir string, opts ScanOptions) (*ScanResult, error
 		// Extra specific repos — always checked regardless of mode (small explicit list).
 		for _, extraKey := range src.ExtraRepos {
 			fetchRepoByKey(extraKey)
+		}
+
+		// Extra orgs — always scanned; sendRepo deduplicates by full_name.
+		for _, org := range src.ExtraOrgs {
+			if !opts.Quiet {
+				fmt.Printf("  org:%s... ", org)
+			}
+			orgRepos, err := scanOrg(ctx, org, token, rl)
+			if err != nil {
+				if !opts.Quiet {
+					fmt.Printf("error: %v\n", err)
+				}
+				continue
+			}
+			for _, r := range orgRepos {
+				sendRepo(r)
+			}
+			if !opts.Quiet {
+				fmt.Printf("%d repos\n", len(orgRepos))
+			}
+		}
+
+		// Search queries — always executed; sendRepo deduplicates by full_name.
+		for _, query := range src.SearchQueries {
+			if !opts.Quiet {
+				fmt.Printf("  search:%q... ", query)
+			}
+			searchRepos, err := scanSearch(ctx, query, token, rl)
+			if err != nil {
+				if !opts.Quiet {
+					fmt.Printf("error: %v\n", err)
+				}
+				continue
+			}
+			for _, r := range searchRepos {
+				sendRepo(r)
+			}
+			if !opts.Quiet {
+				fmt.Printf("%d repos\n", len(searchRepos))
+			}
 		}
 	}()
 

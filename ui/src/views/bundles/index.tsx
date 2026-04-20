@@ -86,10 +86,16 @@ function BundleCard({
         </p>
       )}
 
-      {/* Rating + tags */}
+      {/* Rating + tags + language/license badges */}
       <div className="flex items-center justify-between gap-2 mb-2">
         <Stars rating={entry.rating} />
         <div className="flex gap-1 flex-wrap justify-end">
+          {entry.language && (
+            <span className="text-[8px] px-1 py-0.5 rounded bg-[#1f6feb]/20 text-[#58a6ff]">{entry.language}</span>
+          )}
+          {entry.license && (
+            <span className="text-[8px] px-1 py-0.5 rounded bg-[#1a7f37]/20 text-[#56d364]">{entry.license}</span>
+          )}
           {(entry.tags ?? []).slice(0, 3).map(t => (
             <span key={t} className="text-[8px] px-1 py-0.5 rounded bg-[var(--bg-sidebar-active)] text-[var(--text-very-muted)]">
               {t}
@@ -149,6 +155,14 @@ export default function BundlesView() {
   const [ampBundles, setAmpBundles] = useState<AmplifierBundle[]>([])
   const [installedFilter, setInstalledFilter] = useState(false)
   const [sidebarBusy, setSidebarBusy] = useState<Record<string, boolean>>({})
+  const [expandedForks, setExpandedForks] = useState<Set<string>>(new Set())
+
+  const toggleForkExpander = (id: string) =>
+    setExpandedForks(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
+    })
 
   const refreshAmpBundles = () =>
     fetchAmplifierBundles().then(setAmpBundles).catch(() => {})
@@ -328,7 +342,26 @@ export default function BundlesView() {
 
   const featured      = filtered.filter(e => e.featured)
   const rest          = filtered.filter(e => !e.featured)
-  const privateEntries = localFiltered
+
+  // Separate canonical repos from forks for the local index section.
+  // Forks are collapsed under their canonical parent; orphan forks (parent not
+  // in the local index) surface as standalone canonical entries.
+  const canonicalLocal = localFiltered.filter(e => !e.fork)
+  const forksLocal     = localFiltered.filter(e => !!e.fork)
+
+  const forksByParent = new Map<string, RegistryEntry[]>()
+  forksLocal.forEach(e => {
+    if (e.parent) {
+      const list = forksByParent.get(e.parent) ?? []
+      forksByParent.set(e.parent, [...list, e])
+    }
+  })
+
+  // Forks whose canonical parent isn't in the local index appear as standalones.
+  const orphanForks = forksLocal.filter(
+    e => !e.parent || !canonicalLocal.some(c => c.id === e.parent)
+  )
+  const allCanonicalLocal = [...canonicalLocal, ...orphanForks]
 
   if (error) {
     return (
@@ -585,21 +618,63 @@ export default function BundlesView() {
             </div>
           )}
 
-          {/* Private / local */}
-          {privateEntries.length > 0 && (
+          {/* GitHub / local index — canonical entries with fork expanders */}
+          {allCanonicalLocal.length > 0 && (
             <section>
-              <h3 className="text-[10px] text-[#8b949e] uppercase tracking-wider mb-2">🔒 Private ({privateEntries.length})</h3>
+              <h3 className="text-[10px] text-[#8b949e] uppercase tracking-wider mb-2">
+                GitHub Index ({localFiltered.length})
+              </h3>
               <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-                {privateEntries.map(e => (
-                  <BundleCard
-                    key={e.id}
-                    entry={e}
-                    installed={isInstalled(e)}
-                    busy={!!busy[e.id]}
-                    onAdd={() => handleAdd(e)}
-                    onRemove={() => handleRemove(e.id, e)}
-                  />
-                ))}
+                {allCanonicalLocal.map(e => {
+                  const forks = forksByParent.get(e.id) ?? []
+                  const expanded = expandedForks.has(e.id)
+                  return (
+                    <div key={e.id} className="flex flex-col">
+                      <BundleCard
+                        entry={e}
+                        installed={isInstalled(e)}
+                        busy={!!busy[e.id]}
+                        onAdd={() => handleAdd(e)}
+                        onRemove={() => handleRemove(e.id, e)}
+                      />
+                      {forks.length > 0 && (
+                        <div className="mt-1 ml-2">
+                          <button
+                            onClick={() => toggleForkExpander(e.id)}
+                            className="text-[9px] text-[var(--text-very-muted)] hover:text-[var(--text-muted)] transition-colors flex items-center gap-1"
+                          >
+                            <span className="opacity-60">└──</span>
+                            <span>{forks.length} {forks.length === 1 ? 'fork' : 'forks'}</span>
+                            <span>{expanded ? '▲' : '▼'}</span>
+                          </button>
+                          {expanded && (
+                            <div className="ml-4 mt-0.5 space-y-0.5">
+                              {forks.map(f => (
+                                <div key={f.id} className="flex items-center gap-1.5 py-0.5 min-w-0">
+                                  <a
+                                    href={f.repo ?? '#'}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[9px] font-mono text-[var(--text-muted)] hover:text-[var(--amber)] hover:underline truncate"
+                                    title={f.id}
+                                  >
+                                    {f.id}
+                                  </a>
+                                  {(f.stars ?? 0) > 0 && (
+                                    <span className="text-[8px] text-[var(--text-very-muted)] shrink-0">★ {f.stars}</span>
+                                  )}
+                                  {f.language && (
+                                    <span className="text-[8px] px-1 py-0 rounded bg-[#1f6feb]/20 text-[#58a6ff] shrink-0">{f.language}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </section>
           )}
